@@ -314,10 +314,6 @@ export default function App() {
     setBarcodeHeight(config.barcodeHeight);
     setColor(config.color);
     setBgColor(config.bgColor);
-    // Reset internal change flag after a tick to allow the effect to run
-    setTimeout(() => {
-      isInternalChange.current = false;
-    }, 50);
   }, []);
 
   const undo = useCallback(() => {
@@ -340,9 +336,12 @@ export default function App() {
 
   // Record history
   useEffect(() => {
-    if (isInternalChange.current) return;
-
     const timer = setTimeout(() => {
+      if (isInternalChange.current) {
+        isInternalChange.current = false;
+        return;
+      }
+
       const lastConfig = history[historyIndex];
       if (JSON.stringify(currentConfig) !== JSON.stringify(lastConfig)) {
         const newHistory = history.slice(0, historyIndex + 1);
@@ -942,6 +941,11 @@ export default function App() {
                         id="save-name"
                         value={barcodeName}
                         onChange={(e) => setBarcodeName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            saveCurrentBarcode();
+                          }
+                        }}
                         placeholder="e.g., Summer Collection 2024"
                         className="h-8 text-xs bg-zinc-50 border-zinc-200 focus-visible:ring-zinc-900"
                       />
