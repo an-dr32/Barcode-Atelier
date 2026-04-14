@@ -101,6 +101,8 @@ export default function App() {
   const [silhouette, setSilhouette] = useState<string | null>(null);
   const [distortion, setDistortion] = useState(0.5);
   const [safeZone, setSafeZone] = useState(0.2);
+  const [barcodeHeight, setBarcodeHeight] = useState(150);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Sanitize state to prevent NaN
   useEffect(() => {
@@ -119,6 +121,13 @@ export default function App() {
     if (v && v.length > 0) {
       const val = v[0];
       if (!isNaN(val)) setSafeZone(val);
+    }
+  }, []);
+
+  const handleHeightChange = useCallback((v: number[]) => {
+    if (v && v.length > 0) {
+      const val = v[0];
+      if (!isNaN(val)) setBarcodeHeight(val);
     }
   }, []);
   const [color, setColor] = useState('#000000');
@@ -147,10 +156,7 @@ export default function App() {
   }, [inputText, barcodeType]);
 
   // Handle Image Upload
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const processUpload = async (file: File) => {
     setIsProcessing(true);
     try {
       const result = await processImage(file);
@@ -162,6 +168,32 @@ export default function App() {
       console.error(err);
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    processUpload(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      processUpload(file);
+    } else {
+      toast.error('Please drop an image file');
     }
   };
 
@@ -323,8 +355,16 @@ export default function App() {
                     </div>
 
                     <div 
-                      className="border-2 border-dashed border-zinc-200 rounded-xl p-6 text-center hover:border-zinc-400 transition-colors cursor-pointer bg-zinc-50/50 group"
+                      className={cn(
+                        "border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer group",
+                        isDragging 
+                          ? "border-zinc-900 bg-zinc-100 scale-[1.02]" 
+                          : "border-zinc-200 bg-zinc-50/50 hover:border-zinc-400"
+                      )}
                       onClick={() => document.getElementById('image-upload')?.click()}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
                     >
                       <input 
                         type="file" 
@@ -390,6 +430,7 @@ export default function App() {
                   silhouette={silhouette}
                   distortion={distortion}
                   safeZone={safeZone}
+                  barcodeHeight={barcodeHeight}
                   color={color}
                   backgroundColor={bgColor}
                   showSafeZone={showSafeZone}
@@ -438,6 +479,21 @@ export default function App() {
                         onValueChange={handleDistortionChange} 
                         max={1} 
                         step={0.01} 
+                        className="py-4"
+                      />
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <Label className="text-xs font-semibold">Vertical Scale</Label>
+                        <span className="text-[10px] font-mono text-zinc-400">{barcodeHeight}px</span>
+                      </div>
+                      <Slider 
+                        value={[barcodeHeight]} 
+                        onValueChange={handleHeightChange} 
+                        min={50}
+                        max={300} 
+                        step={1} 
                         className="py-4"
                       />
                     </div>

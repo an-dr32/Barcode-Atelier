@@ -7,6 +7,7 @@ interface BarcodeCanvasProps {
   silhouette: string | null;
   distortion: number;
   safeZone: number;
+  barcodeHeight?: number; // New prop
   color: string;
   backgroundColor: string;
   showSafeZone: boolean;
@@ -18,6 +19,7 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
   silhouette,
   distortion,
   safeZone,
+  barcodeHeight = 150, // Default increased from 100
   color,
   backgroundColor,
   showSafeZone,
@@ -157,8 +159,7 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
   }, [silhouette]);
 
   const viewBoxWidth = data ? Math.max(120, data.totalWidth + 40) : 120;
-  const viewBoxHeight = 130;
-  const barcodeHeight = 100;
+  const viewBoxHeight = barcodeHeight + 30; // Dynamic height
   const padding = (viewBoxWidth - (data?.totalWidth || 0)) / 2;
 
   const safeDistortion = (typeof distortion === 'number' && !isNaN(distortion)) ? distortion : 0.5;
