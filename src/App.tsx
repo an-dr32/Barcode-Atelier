@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BarcodeCanvas } from './components/BarcodeCanvas';
 import { generateBarcodeData, BarcodeData, BarcodeType, calculateScannability } from './lib/barcode-utils';
 import { processImage, ImageProcessingResult } from './lib/image-utils';
@@ -26,7 +26,12 @@ import {
   XCircle,
   Maximize2,
   Palette,
-  Zap
+  Zap,
+  ChevronDown,
+  Plus,
+  Trash2,
+  Save,
+  History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
@@ -158,9 +163,24 @@ const EditableNumber = ({
   );
 };
 
+interface SavedBarcode {
+  id: string;
+  name: string;
+  text: string;
+  type: BarcodeType;
+  silhouette: string | null;
+  distortion: number;
+  safeZone: number;
+  barcodeHeight: number;
+  color: string;
+  bgColor: string;
+  timestamp: number;
+}
+
 export default function App() {
   // State
   const [inputText, setInputText] = useState('123456789012');
+  const [barcodeName, setBarcodeName] = useState('My Barcode');
   const [barcodeType, setBarcodeType] = useState<BarcodeType>('CODE128');
   const [barcodeData, setBarcodeData] = useState<BarcodeData | null>(null);
   const [silhouette, setSilhouette] = useState<string | null>(null);
@@ -168,6 +188,7 @@ export default function App() {
   const [safeZone, setSafeZone] = useState(0.2);
   const [barcodeHeight, setBarcodeHeight] = useState(150);
   const [isDragging, setIsDragging] = useState(false);
+  const [savedBarcodes, setSavedBarcodes] = useState<SavedBarcode[]>([]);
 
   // Sanitize state to prevent NaN
   useEffect(() => {
@@ -227,6 +248,7 @@ export default function App() {
       const result = await processImage(file);
       setSilhouette(result.silhouette);
       setWarnings(result.warnings);
+      setDistortion(1.0); // Automatically set to 100% on upload
       toast.success('Silhouette extracted successfully');
     } catch (err) {
       toast.error('Failed to process image');
@@ -281,6 +303,69 @@ export default function App() {
   };
 
   const scannabilityScore = calculateScannability(barcodeData?.binary || '', distortion, safeZone);
+
+  const saveCurrentBarcode = () => {
+    const newSaved: SavedBarcode = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: barcodeName || 'Untitled',
+      text: inputText,
+      type: barcodeType,
+      silhouette,
+      distortion,
+      safeZone,
+      barcodeHeight,
+      color,
+      bgColor,
+      timestamp: Date.now()
+    };
+    setSavedBarcodes(prev => [newSaved, ...prev]);
+    toast.success(`"${newSaved.name}" saved to drawer`);
+    setBarcodeName('My Barcode');
+  };
+
+  const loadBarcode = (bc: SavedBarcode) => {
+    setBarcodeName(bc.name);
+    setInputText(bc.text);
+    setBarcodeType(bc.type);
+    setSilhouette(bc.silhouette);
+    setDistortion(bc.distortion);
+    setSafeZone(bc.safeZone);
+    setBarcodeHeight(bc.barcodeHeight);
+    setColor(bc.color);
+    setBgColor(bc.bgColor);
+    toast.success(`"${bc.name}" configuration loaded`);
+  };
+
+  const deleteSavedBarcode = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setSavedBarcodes(prev => prev.filter(bc => bc.id !== id));
+    toast.success('Removed from drawer');
+  };
+
+  // Grab-to-scroll logic
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [isDraggingScroll, setIsDraggingScroll] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!scrollRef.current) return;
+    setIsDraggingScroll(true);
+    setStartX(e.pageX - scrollRef.current.offsetLeft);
+    setScrollLeft(scrollRef.current.scrollLeft);
+  };
+
+  const handleMouseUp = () => {
+    setIsDraggingScroll(false);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingScroll || !scrollRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - scrollRef.current.offsetLeft;
+    const walk = (x - startX) * 1.5;
+    scrollRef.current.scrollLeft = scrollLeft - walk;
+  };
 
   const getScoreColor = (score: number) => {
     if (score > 80) return 'text-emerald-500';
@@ -527,47 +612,125 @@ export default function App() {
           </aside>
 
           {/* Center: Canvas */}
-          <section className="flex-1 bg-[#f0f0f0] flex flex-col items-center justify-center p-12 relative overflow-hidden">
+          <section className="flex-1 bg-[#f0f0f0] flex flex-col items-center relative overflow-hidden">
             {/* Background Pattern */}
             <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 0)', backgroundSize: '24px 24px' }} />
             
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={`${inputText}-${barcodeType}-${silhouette}`}
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: -20 }}
-                transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
-                className="w-full max-w-2xl z-10"
-              >
-                <BarcodeCanvas 
-                  data={barcodeData}
-                  silhouette={silhouette}
-                  distortion={distortion}
-                  safeZone={safeZone}
-                  barcodeHeight={barcodeHeight}
-                  color={color}
-                  backgroundColor={bgColor}
-                  showSafeZone={showSafeZone}
-                  error={error}
-                />
-              </motion.div>
-            </AnimatePresence>
+            <div className="flex-1 w-full flex items-center justify-center p-6 relative">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={`${inputText}-${barcodeType}-${silhouette}`}
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -20 }}
+                  transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
+                  className="w-full max-w-2xl z-10"
+                >
+                  <BarcodeCanvas 
+                    data={barcodeData}
+                    silhouette={silhouette}
+                    distortion={distortion}
+                    safeZone={safeZone}
+                    barcodeHeight={barcodeHeight}
+                    color={color}
+                    backgroundColor={bgColor}
+                    showSafeZone={showSafeZone}
+                    error={error}
+                  />
+                </motion.div>
+              </AnimatePresence>
+            </div>
 
-            {/* Floating Status */}
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-white/90 backdrop-blur-sm border border-zinc-200 px-6 py-3 rounded-full shadow-xl z-20">
-              <div className="flex items-center gap-3 border-right border-zinc-100 pr-4">
-                {getScoreIcon(scannabilityScore)}
-                <div>
-                  <p className="text-[10px] font-bold uppercase text-zinc-400 leading-none mb-1">Scanability</p>
-                  <p className={`text-sm font-bold ${getScoreColor(scannabilityScore)}`}>{scannabilityScore}%</p>
+            {/* Save Section */}
+            <div className="z-20 w-full max-w-md mb-4 px-6">
+              <Card className="bg-white border-zinc-200 shadow-sm rounded-xl overflow-hidden">
+                <div className="p-3 space-y-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="save-name" className="text-[10px] uppercase text-zinc-400 font-bold tracking-tight">Barcode Name</Label>
+                    <div className="flex gap-2">
+                      <Input 
+                        id="save-name"
+                        value={barcodeName}
+                        onChange={(e) => setBarcodeName(e.target.value)}
+                        placeholder="e.g., Summer Collection 2024"
+                        className="h-8 text-xs bg-zinc-50 border-zinc-200 focus-visible:ring-zinc-900"
+                      />
+                      <Button 
+                        onClick={saveCurrentBarcode}
+                        className="h-8 bg-zinc-900 text-white hover:bg-zinc-800 rounded-lg px-4 transition-all active:scale-95 font-bold text-xs gap-2"
+                      >
+                        <Save className="w-3 h-3" />
+                        Save
+                      </Button>
+                    </div>
+                  </div>
                 </div>
+              </Card>
+            </div>
+
+            {/* Saved Barcodes Drawer */}
+            <div className="w-full h-80 bg-white border-t border-zinc-200 z-20 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.04)] relative pb-6">
+              <div className="px-6 py-2.5 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/30">
+                <div className="flex items-center gap-2">
+                  <History className="w-3.5 h-3.5 text-zinc-400" />
+                  <span className="text-[9px] font-bold uppercase text-zinc-500 tracking-widest">Saved Barcodes</span>
+                </div>
+                <span className="text-[9px] font-bold text-zinc-400 bg-zinc-100 px-2 py-0.5 rounded-full">{savedBarcodes.length}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full animate-pulse ${scannabilityScore > 50 ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                <p className="text-xs font-medium text-zinc-600">
-                  {scannabilityScore > 80 ? 'Safe to scan' : scannabilityScore > 50 ? 'Risky' : 'Not scannable'}
-                </p>
+              
+              <div 
+                ref={scrollRef}
+                onMouseDown={handleMouseDown}
+                onMouseLeave={handleMouseUp}
+                onMouseUp={handleMouseUp}
+                onMouseMove={handleMouseMove}
+                className={cn(
+                  "flex-1 w-full overflow-x-auto overflow-y-hidden select-none scrollbar-thin scrollbar-thumb-zinc-200 scrollbar-track-transparent",
+                  isDraggingScroll ? "cursor-grabbing" : "cursor-grab"
+                )}
+              >
+                <div className="flex gap-4 p-5 min-w-full">
+                  {savedBarcodes.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center text-zinc-300 py-4 min-w-[200px] mx-auto">
+                      <Save className="w-6 h-6 mb-2 opacity-20" />
+                      <p className="text-[10px] font-medium">No saved barcodes yet</p>
+                    </div>
+                  ) : (
+                    savedBarcodes.map((bc) => (
+                      <motion.div
+                        layout
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        key={bc.id}
+                        onClick={() => !isDraggingScroll && loadBarcode(bc)}
+                        className="flex-shrink-0 w-32 h-32 bg-zinc-50 border border-zinc-200 rounded-xl p-3 cursor-pointer hover:border-zinc-900 hover:bg-white transition-all group relative shadow-sm"
+                      >
+                        <div className="h-full flex flex-col justify-between pointer-events-none">
+                          <div className="space-y-1">
+                            <p className="text-[10px] font-bold text-zinc-900 truncate">{bc.name}</p>
+                            <p className="text-[8px] text-zinc-500 truncate">{bc.text}</p>
+                            <p className="text-[8px] text-zinc-400 uppercase font-bold tracking-tighter">{bc.type}</p>
+                          </div>
+                          <div className="flex-1 flex items-center justify-center opacity-30 group-hover:opacity-100 transition-opacity">
+                            <Barcode className="w-6 h-6 text-zinc-400 group-hover:text-zinc-900" />
+                          </div>
+                          <div className="text-[8px] text-zinc-400 text-right">
+                            {new Date(bc.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteSavedBarcode(e, bc.id);
+                          }}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-rose-600 pointer-events-auto"
+                        >
+                          <Trash2 className="w-2.5 h-2.5" />
+                        </button>
+                      </motion.div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
           </section>
@@ -684,7 +847,7 @@ export default function App() {
                   </div>
                   <ul className="space-y-2">
                     <li className="text-[11px] text-zinc-500 leading-relaxed">
-                      • Keep the <span className="text-zinc-900 font-semibold">Safe Zone</span> above 20% for reliable scanning.
+                      • Keep the <span className="text-zinc-900 font-semibold">Safe Zone</span> above 10% for reliable scanning.
                     </li>
                     <li className="text-[11px] text-zinc-500 leading-relaxed">
                       • High contrast between ink and background is essential.

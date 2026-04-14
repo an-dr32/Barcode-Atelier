@@ -281,7 +281,7 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
                 x2={viewBoxWidth}
                 y2={barcodeHeight * (1 - safeSafeZone)}
                 stroke="red"
-                strokeWidth="0.2"
+                strokeWidth="0.22"
                 strokeDasharray="1 1"
                 opacity="0.5"
               />
