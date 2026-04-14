@@ -9,6 +9,8 @@ interface BarcodeCanvasProps {
   safeZone: number;
   horizontalOffset: number;
   barWidthScale: number;
+  logoSmoothing: number;
+  logoDetail: number;
   barcodeHeight?: number;
   color: string;
   backgroundColor: string;
@@ -23,6 +25,8 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
   safeZone,
   horizontalOffset,
   barWidthScale,
+  logoSmoothing,
+  logoDetail,
   barcodeHeight = 150,
   color,
   backgroundColor,
@@ -196,19 +200,64 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
                 const scaledWidth = bar.width * barWidthScale;
                 const xOffset = (bar.width - scaledWidth) / 2;
                 
-                // Calculate xPos for sampling, including horizontal offset
-                // horizontalOffset is -1 to 1, we want to shift the sampling position
-                const xPos = ((bar.x + bar.width / 2) / totalWidth) - horizontalOffset;
+                // Area Sampling: Sample all columns covered by the bar
+                const startXPos = ((bar.x) / totalWidth) - horizontalOffset;
+                const endXPos = ((bar.x + bar.width) / totalWidth) - horizontalOffset;
                 
                 let finalSegments: { start: number; end: number }[] = [];
 
                 if (silhouetteData) {
                   const { segments, minX, maxX } = silhouetteData;
                   const rangeX = maxX - minX;
-                  const silhouetteX = rangeX > 0 ? minX + xPos * rangeX : minX;
-                  const sampleIdx = Math.max(0, Math.min(399, Math.floor(silhouetteX)));
                   
-                  const logoSegments = segments[sampleIdx] || [];
+                  const startIdx = Math.max(0, Math.min(399, Math.floor(minX + startXPos * rangeX)));
+                  const endIdx = Math.max(0, Math.min(399, Math.floor(minX + endXPos * rangeX)));
+                  
+                  // Collect segments from all columns in range
+                  const rawSegments: { start: number; end: number }[] = [];
+                  for (let i = startIdx; i <= endIdx; i++) {
+                    rawSegments.push(...(segments[i] || []));
+                  }
+                  
+                  let logoSegments: { start: number; end: number }[] = [];
+                  
+                  // Union segments
+                  if (rawSegments.length > 0) {
+                    rawSegments.sort((a, b) => a.start - b.start);
+                    let current = { ...rawSegments[0] };
+                    for (let i = 1; i < rawSegments.length; i++) {
+                      if (rawSegments[i].start <= current.end) {
+                        current.end = Math.max(current.end, rawSegments[i].end);
+                      } else {
+                        logoSegments.push(current);
+                        current = { ...rawSegments[i] };
+                      }
+                    }
+                    logoSegments.push(current);
+                  }
+                  
+                  // Apply Smoothing (merge nearby segments)
+                  const smoothingThreshold = logoSmoothing * 0.1; // Max 10% of height
+                  if (smoothingThreshold > 0 && logoSegments.length > 1) {
+                    const smoothed: { start: number; end: number }[] = [];
+                    let current = { ...logoSegments[0] };
+                    for (let i = 1; i < logoSegments.length; i++) {
+                      if (logoSegments[i].start - current.end <= smoothingThreshold) {
+                        current.end = Math.max(current.end, logoSegments[i].end);
+                      } else {
+                        smoothed.push(current);
+                        current = { ...logoSegments[i] };
+                      }
+                    }
+                    smoothed.push(current);
+                    logoSegments = smoothed;
+                  }
+                  
+                  // Apply Detail Filter (remove tiny segments)
+                  const detailThreshold = logoDetail * 0.05; // Max 5% of height
+                  if (detailThreshold > 0) {
+                    logoSegments = logoSegments.filter(seg => (seg.end - seg.start) >= detailThreshold);
+                  }
                   
                   if (safeDistortion > 0) {
                     // Apply distortion: interpolate between full bar [0, 1] and logo segments
@@ -221,6 +270,7 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
                   }
                 } else {
                   // Fallback wave if no silhouette
+                  const xPos = ((bar.x + bar.width / 2) / totalWidth) - horizontalOffset;
                   const wave = (Math.sin(xPos * 12) * 0.45 + 0.5);
                   finalSegments = [{ start: (1 - wave) * safeDistortion, end: 1 }];
                 }

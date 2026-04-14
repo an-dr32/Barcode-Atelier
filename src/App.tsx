@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { BarcodeCanvas } from './components/BarcodeCanvas';
 import { generateBarcodeData, BarcodeData, BarcodeType, calculateScannability } from './lib/barcode-utils';
 import { processImage, ImageProcessingResult } from './lib/image-utils';
@@ -32,7 +32,10 @@ import {
   Plus,
   Trash2,
   Save,
-  History
+  History,
+  RotateCcw,
+  Undo2,
+  Redo2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
@@ -174,6 +177,8 @@ interface SavedBarcode {
   safeZone: number;
   horizontalOffset: number;
   barWidthScale: number;
+  logoSmoothing: number;
+  logoDetail: number;
   barcodeHeight: number;
   color: string;
   bgColor: string;
@@ -197,6 +202,8 @@ export default function App() {
   const [safeZone, setSafeZone] = useState(0.2);
   const [horizontalOffset, setHorizontalOffset] = useState(0);
   const [barWidthScale, setBarWidthScale] = useState(1);
+  const [logoSmoothing, setLogoSmoothing] = useState(0.2);
+  const [logoDetail, setLogoDetail] = useState(0.1);
   const [barcodeHeight, setBarcodeHeight] = useState(150);
   const [isDragging, setIsDragging] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -237,6 +244,20 @@ export default function App() {
     }
   }, []);
 
+  const handleLogoSmoothingChange = useCallback((v: number[]) => {
+    if (v && v.length > 0) {
+      const val = v[0];
+      if (!isNaN(val)) setLogoSmoothing(val);
+    }
+  }, []);
+
+  const handleLogoDetailChange = useCallback((v: number[]) => {
+    if (v && v.length > 0) {
+      const val = v[0];
+      if (!isNaN(val)) setLogoDetail(val);
+    }
+  }, []);
+
   const handleHeightChange = useCallback((v: number[]) => {
     if (v && v.length > 0) {
       const val = v[0];
@@ -249,6 +270,118 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Undo/Redo History
+  const [history, setHistory] = useState<any[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const isInternalChange = useRef(false);
+
+  const currentConfig = useMemo(() => ({
+    inputText,
+    barcodeType,
+    silhouette,
+    distortion,
+    safeZone,
+    horizontalOffset,
+    barWidthScale,
+    logoSmoothing,
+    logoDetail,
+    barcodeHeight,
+    color,
+    bgColor
+  }), [
+    inputText, barcodeType, silhouette, distortion, safeZone,
+    horizontalOffset, barWidthScale, logoSmoothing, logoDetail,
+    barcodeHeight, color, bgColor
+  ]);
+
+  const applyConfig = useCallback((config: any) => {
+    isInternalChange.current = true;
+    setInputText(config.inputText);
+    setBarcodeType(config.barcodeType);
+    setSilhouette(config.silhouette);
+    setDistortion(config.distortion);
+    setSafeZone(config.safeZone);
+    setHorizontalOffset(config.horizontalOffset);
+    setBarWidthScale(config.barWidthScale);
+    setLogoSmoothing(config.logoSmoothing);
+    setLogoDetail(config.logoDetail);
+    setBarcodeHeight(config.barcodeHeight);
+    setColor(config.color);
+    setBgColor(config.bgColor);
+    // Reset internal change flag after a tick to allow the effect to run
+    setTimeout(() => {
+      isInternalChange.current = false;
+    }, 50);
+  }, []);
+
+  const undo = useCallback(() => {
+    if (historyIndex > 0) {
+      const prevConfig = history[historyIndex - 1];
+      applyConfig(prevConfig);
+      setHistoryIndex(historyIndex - 1);
+      toast.info('Undo', { duration: 1000 });
+    }
+  }, [history, historyIndex, applyConfig]);
+
+  const redo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      const nextConfig = history[historyIndex + 1];
+      applyConfig(nextConfig);
+      setHistoryIndex(historyIndex + 1);
+      toast.info('Redo', { duration: 1000 });
+    }
+  }, [history, historyIndex, applyConfig]);
+
+  // Record history
+  useEffect(() => {
+    if (isInternalChange.current) return;
+
+    const timer = setTimeout(() => {
+      const lastConfig = history[historyIndex];
+      if (JSON.stringify(currentConfig) !== JSON.stringify(lastConfig)) {
+        const newHistory = history.slice(0, historyIndex + 1);
+        newHistory.push(currentConfig);
+        if (newHistory.length > 50) newHistory.shift();
+        setHistory(newHistory);
+        setHistoryIndex(newHistory.length - 1);
+      }
+    }, 800); // Debounce history recording
+
+    return () => clearTimeout(timer);
+  }, [currentConfig, history, historyIndex]);
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        if (e.shiftKey) {
+          e.preventDefault();
+          redo();
+        } else {
+          e.preventDefault();
+          undo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        e.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
+
+  const resetTransformations = () => {
+    setDistortion(0.5);
+    setSafeZone(0.2);
+    setHorizontalOffset(0);
+    setBarWidthScale(1);
+    setLogoSmoothing(0.2);
+    setLogoDetail(0.1);
+    setBarcodeHeight(150);
+    toast.success('Transformations reset to default');
+  };
 
   // Generate Barcode
   useEffect(() => {
@@ -382,6 +515,8 @@ export default function App() {
       safeZone,
       horizontalOffset,
       barWidthScale,
+      logoSmoothing,
+      logoDetail,
       barcodeHeight,
       color,
       bgColor,
@@ -401,6 +536,8 @@ export default function App() {
     setSafeZone(bc.safeZone);
     setHorizontalOffset(bc.horizontalOffset || 0);
     setBarWidthScale(bc.barWidthScale || 1);
+    setLogoSmoothing(bc.logoSmoothing ?? 0.2);
+    setLogoDetail(bc.logoDetail ?? 0.1);
     setBarcodeHeight(bc.barcodeHeight);
     setColor(bc.color);
     setBgColor(bc.bgColor);
@@ -772,6 +909,8 @@ export default function App() {
                     safeZone={safeZone}
                     horizontalOffset={horizontalOffset}
                     barWidthScale={barWidthScale}
+                    logoSmoothing={logoSmoothing}
+                    logoDetail={logoDetail}
                     barcodeHeight={barcodeHeight}
                     color={color}
                     backgroundColor={bgColor}
@@ -881,9 +1020,19 @@ export default function App() {
             <ScrollArea className="flex-1">
               <div className="p-6 space-y-8">
                 <section className="space-y-6">
-                  <div className="flex items-center gap-2 text-zinc-500">
-                    <Settings2 className="w-4 h-4" />
-                    <h2 className="text-xs font-bold uppercase tracking-wider">Transformation</h2>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-zinc-500">
+                      <Settings2 className="w-4 h-4" />
+                      <h2 className="text-xs font-bold uppercase tracking-wider">Transformation</h2>
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-6 w-6 text-zinc-400 hover:text-zinc-900"
+                      onClick={resetTransformations}
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                    </Button>
                   </div>
 
                   <div className="space-y-6">
@@ -932,6 +1081,38 @@ export default function App() {
                         onValueChange={handleBarWidthScaleChange} 
                         min={0.1}
                         max={2} 
+                        step={0.01} 
+                        className="py-4"
+                      />
+                    </div>
+
+                    <div className="space-y-3">
+                      <EditablePercentage 
+                        label="Logo Smoothing" 
+                        value={logoSmoothing} 
+                        onChange={(val) => setLogoSmoothing(val)} 
+                      />
+                      <Slider 
+                        value={[logoSmoothing]} 
+                        onValueChange={handleLogoSmoothingChange} 
+                        min={0}
+                        max={1} 
+                        step={0.01} 
+                        className="py-4"
+                      />
+                    </div>
+
+                    <div className="space-y-3">
+                      <EditablePercentage 
+                        label="Logo Detail Filter" 
+                        value={logoDetail} 
+                        onChange={(val) => setLogoDetail(val)} 
+                      />
+                      <Slider 
+                        value={[logoDetail]} 
+                        onValueChange={handleLogoDetailChange} 
+                        min={0}
+                        max={0.5} 
                         step={0.01} 
                         className="py-4"
                       />
