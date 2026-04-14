@@ -36,13 +36,22 @@ import {
   RotateCcw,
   Undo2,
   Redo2,
-  Search
+  Search,
+  Type
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { toPng, toSvg } from 'html-to-image';
 
 import { PRESET_SHAPES } from './lib/presets';
+
+const FONTS = [
+  { name: 'Sans Serif', value: 'Inter, sans-serif' },
+  { name: 'Serif', value: 'Playfair Display, serif' },
+  { name: 'Mono', value: 'JetBrains Mono, monospace' },
+  { name: 'Modern', value: 'Outfit, sans-serif' },
+  { name: 'Tech', value: 'Space Grotesk, sans-serif' },
+];
 
 const EditablePercentage = ({ 
   value, 
@@ -183,6 +192,9 @@ interface SavedBarcode {
   barcodeHeight: number;
   color: string;
   bgColor: string;
+  silhouetteText?: string;
+  silhouetteFont?: string;
+  silhouetteFontSize?: number;
   timestamp: number;
 }
 
@@ -210,6 +222,23 @@ export default function App() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [customSilhouettes, setCustomSilhouettes] = useState<CustomSilhouette[]>([]);
   const [savedBarcodes, setSavedBarcodes] = useState<SavedBarcode[]>([]);
+
+  // Section Visibility State
+  const [visibleSections, setVisibleSections] = useState({
+    textShape: true,
+    silhouette: true,
+    transformation: true,
+    appearance: true
+  });
+
+  const toggleSection = (section: keyof typeof visibleSections) => {
+    setVisibleSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  // Text Silhouette State
+  const [silhouetteText, setSilhouetteText] = useState('');
+  const [silhouetteFont, setSilhouetteFont] = useState(FONTS[0].value);
+  const [silhouetteFontSize, setSilhouetteFontSize] = useState(100);
 
   // Sanitize state to prevent NaN
   useEffect(() => {
@@ -405,6 +434,49 @@ export default function App() {
     }
   }, [inputText, barcodeType]);
 
+  // Generate Text Silhouette
+  useEffect(() => {
+    if (!silhouetteText) return;
+    
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Measure text to size canvas appropriately
+    ctx.font = `bold ${silhouetteFontSize}px ${silhouetteFont}`;
+    const metrics = ctx.measureText(silhouetteText);
+    const textWidth = Math.ceil(metrics.width) + 40;
+    const textHeight = silhouetteFontSize + 40;
+    
+    canvas.width = textWidth;
+    canvas.height = textHeight;
+    
+    // Clear and draw
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'black';
+    ctx.font = `bold ${silhouetteFontSize}px ${silhouetteFont}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(silhouetteText, canvas.width / 2, canvas.height / 2);
+    
+    setSilhouette(canvas.toDataURL('image/png'));
+    setDistortion(1.0); // Default to full distortion for text
+  }, [silhouetteText, silhouetteFont, silhouetteFontSize]);
+
+  const saveTextToSilhouettes = () => {
+    if (!silhouette || !silhouetteText) return;
+    
+    const newCustom: CustomSilhouette = {
+      id: Math.random().toString(36).substr(2, 9),
+      path: silhouette,
+      previewUrl: silhouette // The data URL is the preview
+    };
+    
+    setCustomSilhouettes(prev => [newCustom, ...prev]);
+    toast.success(`Text shape "${silhouetteText}" saved to silhouettes`);
+  };
+
   // Handle Image Upload
   const processUpload = async (file: File) => {
     setIsProcessing(true);
@@ -524,6 +596,9 @@ export default function App() {
       barcodeHeight,
       color,
       bgColor,
+      silhouetteText,
+      silhouetteFont,
+      silhouetteFontSize,
       timestamp: Date.now()
     };
     setSavedBarcodes(prev => [newSaved, ...prev]);
@@ -545,6 +620,9 @@ export default function App() {
     setBarcodeHeight(bc.barcodeHeight);
     setColor(bc.color);
     setBgColor(bc.bgColor);
+    setSilhouetteText(bc.silhouetteText || '');
+    setSilhouetteFont(bc.silhouetteFont || FONTS[0].value);
+    setSilhouetteFontSize(bc.silhouetteFontSize || 100);
     toast.success(`"${bc.name}" configuration loaded`);
   };
 
@@ -699,14 +777,101 @@ export default function App() {
                 <Separator className="bg-zinc-100" />
 
                 <section className="space-y-4">
-                  <div className="flex items-center gap-2 text-zinc-500">
-                    <ImageIcon className="w-4 h-4" />
-                    <h2 className="text-xs font-bold uppercase tracking-wider">Silhouette</h2>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-zinc-500">
+                      <Type className="w-4 h-4" />
+                      <h2 className="text-xs font-bold uppercase tracking-wider">Text Shape</h2>
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-5 w-5 text-zinc-400"
+                      onClick={() => toggleSection('textShape')}
+                    >
+                      <ChevronDown className={cn("w-3 h-3 transition-transform", !visibleSections.textShape && "-rotate-90")} />
+                    </Button>
                   </div>
                   
-                  <div className="space-y-4">
-                    {/* Preset Shapes */}
-                    <div className="grid grid-cols-5 gap-2">
+                  <AnimatePresence>
+                    {visibleSections.textShape && (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="space-y-3 overflow-hidden"
+                      >
+                        <Input 
+                          value={silhouetteText}
+                          onChange={(e) => setSilhouetteText(e.target.value)}
+                          placeholder="Type text for shape..."
+                          className="h-8 text-xs bg-zinc-50 border-zinc-200 focus:ring-zinc-900"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-[9px] text-zinc-400 uppercase">Font</Label>
+                            <select 
+                              value={silhouetteFont}
+                              onChange={(e) => setSilhouetteFont(e.target.value)}
+                              className="w-full h-7 text-[10px] bg-zinc-50 border border-zinc-200 rounded-md px-1 focus:ring-1 focus:ring-zinc-900 outline-none"
+                            >
+                              {FONTS.map(f => (
+                                <option key={f.value} value={f.value}>{f.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[9px] text-zinc-400 uppercase">Size</Label>
+                            <Input 
+                              type="number"
+                              value={silhouetteFontSize}
+                              onChange={(e) => setSilhouetteFontSize(parseInt(e.target.value) || 10)}
+                              className="h-7 text-[10px] bg-zinc-50 border-zinc-200"
+                            />
+                          </div>
+                        </div>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="w-full h-7 text-[10px] gap-2 bg-zinc-900 text-white hover:bg-zinc-800 border-zinc-900 disabled:bg-zinc-100 disabled:text-zinc-400 disabled:border-zinc-200 transition-colors"
+                          onClick={saveTextToSilhouettes}
+                          disabled={!silhouetteText}
+                        >
+                          <Save className="w-3 h-3" />
+                          Save to Silhouettes
+                        </Button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </section>
+
+                <Separator className="bg-zinc-100" />
+
+                <section className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-zinc-500">
+                      <ImageIcon className="w-4 h-4" />
+                      <h2 className="text-xs font-bold uppercase tracking-wider">Silhouette</h2>
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-5 w-5 text-zinc-400"
+                      onClick={() => toggleSection('silhouette')}
+                    >
+                      <ChevronDown className={cn("w-3 h-3 transition-transform", !visibleSections.silhouette && "-rotate-90")} />
+                    </Button>
+                  </div>
+                  
+                  <AnimatePresence>
+                    {visibleSections.silhouette && (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="space-y-4 overflow-hidden"
+                      >
+                        {/* Preset Shapes */}
+                        <div className="grid grid-cols-5 gap-2">
                       <Tooltip>
                         <TooltipTrigger
                           onClick={setSquareMode}
@@ -890,11 +1055,13 @@ export default function App() {
                         </ul>
                       </div>
                     )}
-                  </div>
-                </section>
-              </div>
-            </ScrollArea>
-          </aside>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </section>
+          </div>
+        </ScrollArea>
+      </aside>
 
           {/* Center: Canvas */}
           <section className="flex-1 bg-[#f0f0f0] flex flex-col items-center relative overflow-hidden">
@@ -1100,174 +1267,214 @@ export default function App() {
                       <Settings2 className="w-4 h-4" />
                       <h2 className="text-xs font-bold uppercase tracking-wider">Transformation</h2>
                     </div>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-6 w-6 text-zinc-400 hover:text-zinc-900"
-                      onClick={resetTransformations}
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                    </Button>
-                  </div>
-
-                  <div className="space-y-6">
-                    <div className="space-y-3">
-                      <EditablePercentage 
-                        label="Distortion Intensity" 
-                        value={distortion} 
-                        onChange={(val) => setDistortion(val)} 
-                      />
-                      <Slider 
-                        value={[distortion]} 
-                        onValueChange={handleDistortionChange} 
-                        max={1} 
-                        step={0.01} 
-                        className="py-4"
-                      />
-                    </div>
-
-                    <div className="space-y-3">
-                      <EditableNumber 
-                        label="Horizontal Offset" 
-                        value={Math.round(horizontalOffset * 100)} 
-                        onChange={(val) => setHorizontalOffset(val / 100)} 
-                        min={-100}
-                        max={100}
-                        suffix="%"
-                      />
-                      <Slider 
-                        value={[horizontalOffset]} 
-                        onValueChange={handleHorizontalOffsetChange} 
-                        min={-1}
-                        max={1} 
-                        step={0.01} 
-                        className="py-4"
-                      />
-                    </div>
-
-                    <div className="space-y-3">
-                      <EditablePercentage 
-                        label="Line Thickness" 
-                        value={barWidthScale} 
-                        onChange={(val) => setBarWidthScale(val)} 
-                      />
-                      <Slider 
-                        value={[barWidthScale]} 
-                        onValueChange={handleBarWidthScaleChange} 
-                        min={0.1}
-                        max={2} 
-                        step={0.01} 
-                        className="py-4"
-                      />
-                    </div>
-
-                    <div className="space-y-3">
-                      <EditablePercentage 
-                        label="Logo Smoothing" 
-                        value={logoSmoothing} 
-                        onChange={(val) => setLogoSmoothing(val)} 
-                      />
-                      <Slider 
-                        value={[logoSmoothing]} 
-                        onValueChange={handleLogoSmoothingChange} 
-                        min={0}
-                        max={1} 
-                        step={0.01} 
-                        className="py-4"
-                      />
-                    </div>
-
-                    <div className="space-y-3">
-                      <EditablePercentage 
-                        label="Logo Detail Filter" 
-                        value={logoDetail} 
-                        onChange={(val) => setLogoDetail(val)} 
-                      />
-                      <Slider 
-                        value={[logoDetail]} 
-                        onValueChange={handleLogoDetailChange} 
-                        min={0}
-                        max={0.5} 
-                        step={0.01} 
-                        className="py-4"
-                      />
-                    </div>
-
-                    <div className="space-y-3">
-                      <EditableNumber 
-                        label="Vertical Scale" 
-                        value={barcodeHeight} 
-                        onChange={(val) => setBarcodeHeight(val)} 
-                        min={50}
-                        max={500}
-                        suffix="px"
-                      />
-                      <Slider 
-                        value={[barcodeHeight]} 
-                        onValueChange={handleHeightChange} 
-                        min={50}
-                        max={500} 
-                        step={1} 
-                        className="py-4"
-                      />
-                    </div>
-
-                    <div className="space-y-3">
-                      <EditablePercentage 
-                        label="Scan-Safe Zone" 
-                        value={safeZone} 
-                        onChange={(val) => setSafeZone(val)} 
-                      />
-                      <Slider 
-                        value={[safeZone]} 
-                        onValueChange={handleSafeZoneChange} 
-                        min={0}
-                        max={0.5} 
-                        step={0.01} 
-                        className="py-4"
-                      />
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor="show-safe-zone" className="text-[10px] text-zinc-500">Show Guide Overlay</Label>
-                        <Switch id="show-safe-zone" checked={showSafeZone} onCheckedChange={setShowSafeZone} />
-                      </div>
+                    <div className="flex items-center gap-1">
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-6 w-6 text-zinc-400 hover:text-zinc-900"
+                        onClick={resetTransformations}
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-6 w-6 text-zinc-400"
+                        onClick={() => toggleSection('transformation')}
+                      >
+                        <ChevronDown className={cn("w-3 h-3 transition-transform", !visibleSections.transformation && "-rotate-90")} />
+                      </Button>
                     </div>
                   </div>
+
+                  <AnimatePresence>
+                    {visibleSections.transformation && (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="space-y-6 overflow-hidden"
+                      >
+                        <div className="space-y-3">
+                          <EditablePercentage 
+                            label="Distortion Intensity" 
+                            value={distortion} 
+                            onChange={(val) => setDistortion(val)} 
+                          />
+                          <Slider 
+                            value={[distortion]} 
+                            onValueChange={handleDistortionChange} 
+                            max={1} 
+                            step={0.01} 
+                            className="py-4"
+                          />
+                        </div>
+
+                        <div className="space-y-3">
+                          <EditableNumber 
+                            label="Horizontal Offset" 
+                            value={Math.round(horizontalOffset * 100)} 
+                            onChange={(val) => setHorizontalOffset(val / 100)} 
+                            min={-100}
+                            max={100}
+                            suffix="%"
+                          />
+                          <Slider 
+                            value={[horizontalOffset]} 
+                            onValueChange={handleHorizontalOffsetChange} 
+                            min={-1}
+                            max={1} 
+                            step={0.01} 
+                            className="py-4"
+                          />
+                        </div>
+
+                        <div className="space-y-3">
+                          <EditablePercentage 
+                            label="Line Thickness" 
+                            value={barWidthScale} 
+                            onChange={(val) => setBarWidthScale(val)} 
+                          />
+                          <Slider 
+                            value={[barWidthScale]} 
+                            onValueChange={handleBarWidthScaleChange} 
+                            min={0.1}
+                            max={2} 
+                            step={0.01} 
+                            className="py-4"
+                          />
+                        </div>
+
+                        <div className="space-y-3">
+                          <EditablePercentage 
+                            label="Logo Smoothing" 
+                            value={logoSmoothing} 
+                            onChange={(val) => setLogoSmoothing(val)} 
+                          />
+                          <Slider 
+                            value={[logoSmoothing]} 
+                            onValueChange={handleLogoSmoothingChange} 
+                            min={0}
+                            max={1} 
+                            step={0.01} 
+                            className="py-4"
+                          />
+                        </div>
+
+                        <div className="space-y-3">
+                          <EditablePercentage 
+                            label="Logo Detail Filter" 
+                            value={logoDetail} 
+                            onChange={(val) => setLogoDetail(val)} 
+                          />
+                          <Slider 
+                            value={[logoDetail]} 
+                            onValueChange={handleLogoDetailChange} 
+                            min={0}
+                            max={0.5} 
+                            step={0.01} 
+                            className="py-4"
+                          />
+                        </div>
+
+                        <div className="space-y-3">
+                          <EditableNumber 
+                            label="Vertical Scale" 
+                            value={barcodeHeight} 
+                            onChange={(val) => setBarcodeHeight(val)} 
+                            min={50}
+                            max={500}
+                            suffix="px"
+                          />
+                          <Slider 
+                            value={[barcodeHeight]} 
+                            onValueChange={handleHeightChange} 
+                            min={50}
+                            max={500} 
+                            step={1} 
+                            className="py-4"
+                          />
+                        </div>
+
+                        <div className="space-y-3">
+                          <EditablePercentage 
+                            label="Scan-Safe Zone" 
+                            value={safeZone} 
+                            onChange={(val) => setSafeZone(val)} 
+                          />
+                          <Slider 
+                            value={[safeZone]} 
+                            onValueChange={handleSafeZoneChange} 
+                            min={0}
+                            max={0.5} 
+                            step={0.01} 
+                            className="py-4"
+                          />
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor="show-safe-zone" className="text-[10px] text-zinc-500">Show Guide Overlay</Label>
+                            <Switch id="show-safe-zone" checked={showSafeZone} onCheckedChange={setShowSafeZone} />
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </section>
 
                 <Separator className="bg-zinc-100" />
 
                 <section className="space-y-6">
-                  <div className="flex items-center gap-2 text-zinc-500">
-                    <Palette className="w-4 h-4" />
-                    <h2 className="text-xs font-bold uppercase tracking-wider">Appearance</h2>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-zinc-500">
+                      <Palette className="w-4 h-4" />
+                      <h2 className="text-xs font-bold uppercase tracking-wider">Appearance</h2>
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-6 w-6 text-zinc-400"
+                      onClick={() => toggleSection('appearance')}
+                    >
+                      <ChevronDown className={cn("w-3 h-3 transition-transform", !visibleSections.appearance && "-rotate-90")} />
+                    </Button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-[10px] uppercase text-zinc-400">Ink Color</Label>
-                      <div className="flex items-center gap-2">
-                        <input 
-                          type="color" 
-                          value={color} 
-                          onChange={(e) => setColor(e.target.value)}
-                          className="w-8 h-8 rounded-md border-0 p-0 cursor-pointer overflow-hidden"
-                        />
-                        <span className="text-[10px] font-mono uppercase">{color}</span>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-[10px] uppercase text-zinc-400">Background</Label>
-                      <div className="flex items-center gap-2">
-                        <input 
-                          type="color" 
-                          value={bgColor} 
-                          onChange={(e) => setBgColor(e.target.value)}
-                          className="w-8 h-8 rounded-md border-0 p-0 cursor-pointer overflow-hidden"
-                        />
-                        <span className="text-[10px] font-mono uppercase">{bgColor}</span>
-                      </div>
-                    </div>
-                  </div>
+                  <AnimatePresence>
+                    {visibleSections.appearance && (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="space-y-6 overflow-hidden"
+                      >
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label className="text-[10px] uppercase text-zinc-400">Ink Color</Label>
+                            <div className="flex items-center gap-2">
+                              <input 
+                                type="color" 
+                                value={color} 
+                                onChange={(e) => setColor(e.target.value)}
+                                className="w-8 h-8 rounded-md border-0 p-0 cursor-pointer overflow-hidden"
+                              />
+                              <span className="text-[10px] font-mono uppercase">{color}</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-[10px] uppercase text-zinc-400">Background</Label>
+                            <div className="flex items-center gap-2">
+                              <input 
+                                type="color" 
+                                value={bgColor} 
+                                onChange={(e) => setBgColor(e.target.value)}
+                                className="w-8 h-8 rounded-md border-0 p-0 cursor-pointer overflow-hidden"
+                              />
+                              <span className="text-[10px] font-mono uppercase">{bgColor}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </section>
 
                 <Separator className="bg-zinc-100" />
