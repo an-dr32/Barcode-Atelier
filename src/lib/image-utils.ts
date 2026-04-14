@@ -61,51 +61,11 @@ export async function processImage(file: File): Promise<ImageProcessingResult> {
           data[i + 3] = 255;
         }
         ctx.putImageData(imageData, 0, 0);
-
-        // 2. Simple Silhouette Extraction (Trace top and bottom edges)
-        // For a true "Barcode Atelier" effect, we want to map the barcode lines
-        // between a top boundary and a bottom boundary.
-        // We'll return the top and bottom edge points.
         
-        const topEdges: number[] = new Array(w).fill(0);
-        const bottomEdges: number[] = new Array(w).fill(h);
-
-        for (let x = 0; x < w; x++) {
-          // Find first black pixel from top
-          for (let y = 0; y < h; y++) {
-            const idx = (y * w + x) * 4;
-            if (data[idx] === 0) {
-              topEdges[x] = y;
-              break;
-            }
-          }
-          // Find first black pixel from bottom
-          for (let y = h - 1; y >= 0; y--) {
-            const idx = (y * w + x) * 4;
-            if (data[idx] === 0) {
-              bottomEdges[x] = y;
-              break;
-            }
-          }
-        }
-
-        // Check for complexity
-        let transitions = 0;
-        for (let x = 1; x < w; x++) {
-          if (Math.abs(topEdges[x] - topEdges[x-1]) > 10) transitions++;
-        }
-        if (transitions > 20) {
-          warnings.push("Image is too detailed, consider a simpler silhouette.");
-        }
-
-        // Create a simple SVG path for the silhouette for preview
-        let pathData = `M 0 ${topEdges[0]}`;
-        for (let x = 1; x < w; x++) pathData += ` L ${x} ${topEdges[x]}`;
-        for (let x = w - 1; x >= 0; x--) pathData += ` L ${x} ${bottomEdges[x]}`;
-        pathData += ' Z';
+        const binarizedDataUrl = canvas.toDataURL('image/png');
 
         resolve({
-          silhouette: pathData,
+          silhouette: binarizedDataUrl,
           width: w,
           height: h,
           warnings

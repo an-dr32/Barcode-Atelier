@@ -14,6 +14,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import { 
   Barcode, 
   Image as ImageIcon, 
@@ -300,7 +301,12 @@ export default function App() {
                           <Tooltip>
                             <TooltipTrigger
                               onClick={() => handlePresetSelect(shape.path)}
-                              className={`aspect-square w-full rounded-lg border flex items-center justify-center transition-all hover:border-zinc-900 ${silhouette === shape.path ? 'bg-zinc-900 border-zinc-900 text-white' : 'bg-zinc-50 border-zinc-200 text-zinc-400'}`}
+                              className={cn(
+                                "aspect-square w-full rounded-lg border flex items-center justify-center transition-all duration-300 hover:border-zinc-900",
+                                silhouette === shape.path 
+                                  ? "bg-zinc-900 border-zinc-900 text-white ring-2 ring-zinc-900 ring-offset-2" 
+                                  : "bg-zinc-50 border-zinc-200 text-zinc-400"
+                              )}
                             >
                               <div className="w-6 h-6 overflow-hidden flex items-center justify-center">
                                 <svg viewBox="0 0 400 400" className="w-full h-full fill-current">
