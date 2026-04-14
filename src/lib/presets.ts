@@ -23,5 +23,10 @@ export const PRESET_SHAPES = [
     name: 'Leaf',
     path: 'M 200 350 Q 50 250 50 100 Q 200 50 350 100 Q 350 250 200 350 Z',
     icon: 'Leaf'
+  },
+  {
+    name: 'Lightning',
+    path: 'M 250 20 L 100 220 L 220 220 L 150 380 L 300 180 L 180 180 Z',
+    icon: 'Zap'
   }
 ];

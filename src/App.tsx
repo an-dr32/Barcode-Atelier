@@ -27,6 +27,7 @@ import {
   Maximize2,
   Palette,
   Zap,
+  Waves,
   ChevronDown,
   Plus,
   Trash2,
@@ -177,6 +178,12 @@ interface SavedBarcode {
   timestamp: number;
 }
 
+interface CustomSilhouette {
+  id: string;
+  path: string;
+  previewUrl: string;
+}
+
 export default function App() {
   // State
   const [inputText, setInputText] = useState('123456789012');
@@ -188,6 +195,8 @@ export default function App() {
   const [safeZone, setSafeZone] = useState(0.2);
   const [barcodeHeight, setBarcodeHeight] = useState(150);
   const [isDragging, setIsDragging] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [customSilhouettes, setCustomSilhouettes] = useState<CustomSilhouette[]>([]);
   const [savedBarcodes, setSavedBarcodes] = useState<SavedBarcode[]>([]);
 
   // Sanitize state to prevent NaN
@@ -246,7 +255,22 @@ export default function App() {
     setIsProcessing(true);
     try {
       const result = await processImage(file);
-      setSilhouette(result.silhouette);
+      
+      // Create preview URL
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const pUrl = reader.result as string;
+        const newCustom: CustomSilhouette = {
+          id: Math.random().toString(36).substr(2, 9),
+          path: result.silhouette,
+          previewUrl: pUrl
+        };
+        setCustomSilhouettes(prev => [newCustom, ...prev]);
+        setSilhouette(result.silhouette);
+        setPreviewUrl(pUrl);
+      };
+      reader.readAsDataURL(file);
+
       setWarnings(result.warnings);
       setDistortion(1.0); // Automatically set to 100% on upload
       toast.success('Silhouette extracted successfully');
@@ -255,6 +279,9 @@ export default function App() {
       console.error(err);
     } finally {
       setIsProcessing(false);
+      // Reset file input to allow re-uploading the same file
+      const input = document.getElementById('image-upload') as HTMLInputElement;
+      if (input) input.value = '';
     }
   };
 
@@ -290,6 +317,27 @@ export default function App() {
     toast.success('Preset shape applied');
   };
 
+  const handleCustomSelect = (cs: CustomSilhouette) => {
+    setSilhouette(cs.path);
+    setPreviewUrl(cs.previewUrl);
+    toast.success('Custom logo applied');
+  };
+
+  const deleteCustomSilhouette = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setCustomSilhouettes(prev => {
+      const filtered = prev.filter(cs => cs.id !== id);
+      // If we deleted the active silhouette, clear it
+      const deleted = prev.find(cs => cs.id === id);
+      if (deleted && silhouette === deleted.path) {
+        setSilhouette(null);
+        setPreviewUrl(null);
+      }
+      return filtered;
+    });
+    toast.success('Custom logo removed');
+  };
+
   const setWaveMode = () => {
     setSilhouette(null);
     setDistortion(0.5);
@@ -298,6 +346,7 @@ export default function App() {
 
   const setSquareMode = () => {
     setSilhouette(null);
+    setPreviewUrl(null);
     setDistortion(0);
     toast.success('Standard square mode activated');
   };
@@ -520,7 +569,7 @@ export default function App() {
                           )}
                         >
                           <div className="w-6 h-6 flex items-center justify-center">
-                            <Zap className="w-4 h-4" />
+                            <Waves className="w-4 h-4" />
                           </div>
                         </TooltipTrigger>
                         <TooltipContent>
@@ -554,6 +603,53 @@ export default function App() {
                       ))}
                     </div>
 
+                    {/* Custom Logos Gallery */}
+                    {customSilhouettes.length > 0 && (
+                      <div className="space-y-3 pt-2">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[10px] uppercase text-zinc-400 font-bold tracking-tight">Your Logos</Label>
+                          <span className="text-[10px] font-bold text-zinc-300">{customSilhouettes.length}</span>
+                        </div>
+                        <div className="grid grid-cols-5 gap-2">
+                          {customSilhouettes.map((cs) => (
+                            <div key={cs.id}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div
+                                    onClick={() => handleCustomSelect(cs)}
+                                    className={cn(
+                                      "aspect-square w-full rounded-lg border flex items-center justify-center transition-all duration-300 hover:border-zinc-900 overflow-hidden p-1 group relative cursor-pointer",
+                                      silhouette === cs.path 
+                                        ? "bg-zinc-900 border-zinc-900 text-white ring-2 ring-zinc-900 ring-offset-2" 
+                                        : "bg-zinc-50 border-zinc-200 text-zinc-400"
+                                    )}
+                                  >
+                                    <div className="w-full h-full flex items-center justify-center">
+                                      <img 
+                                        src={cs.previewUrl} 
+                                        alt="Custom" 
+                                        className={cn("w-full h-full object-contain", silhouette === cs.path && "invert brightness-200")} 
+                                        referrerPolicy="no-referrer"
+                                      />
+                                    </div>
+                                    <button
+                                      onClick={(e) => deleteCustomSilhouette(e, cs.id)}
+                                      className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-rose-600 z-10"
+                                    >
+                                      <Trash2 className="w-2 h-2" />
+                                    </button>
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Custom Logo</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <div 
                       className={cn(
                         "border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer group",
@@ -585,6 +681,31 @@ export default function App() {
                       </p>
                       <p className="text-[10px] text-zinc-400 mt-1">SVG, PNG or JPG</p>
                     </div>
+
+                    {previewUrl && silhouette && customSilhouettes.some(cs => cs.path === silhouette) && (
+                      <div className="space-y-2">
+                        <Label className="text-[10px] uppercase text-zinc-400 font-bold tracking-tight">Image Preview</Label>
+                        <div className="relative aspect-square w-full bg-zinc-50 border border-zinc-200 rounded-xl overflow-hidden flex items-center justify-center p-4 group">
+                          <img 
+                            src={previewUrl} 
+                            alt="Uploaded preview" 
+                            className="max-w-full max-h-full object-contain"
+                            referrerPolicy="no-referrer"
+                          />
+                          <button 
+                            onClick={() => {
+                              const activeCs = customSilhouettes.find(cs => cs.path === silhouette);
+                              if (activeCs) {
+                                deleteCustomSilhouette({ stopPropagation: () => {} } as any, activeCs.id);
+                              }
+                            }}
+                            className="absolute top-2 right-2 w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-rose-600"
+                          >
+                            <XCircle className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {silhouette && (
                       <Button variant="outline" size="sm" className="w-full text-zinc-500" onClick={() => setSilhouette(null)}>
