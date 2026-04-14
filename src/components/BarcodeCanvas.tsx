@@ -7,7 +7,9 @@ interface BarcodeCanvasProps {
   silhouette: string | null;
   distortion: number;
   safeZone: number;
-  barcodeHeight?: number; // New prop
+  horizontalOffset: number;
+  barWidthScale: number;
+  barcodeHeight?: number;
   color: string;
   backgroundColor: string;
   showSafeZone: boolean;
@@ -19,7 +21,9 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
   silhouette,
   distortion,
   safeZone,
-  barcodeHeight = 150, // Default increased from 100
+  horizontalOffset,
+  barWidthScale,
+  barcodeHeight = 150,
   color,
   backgroundColor,
   showSafeZone,
@@ -189,7 +193,12 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
             <g clipPath="url(#barcode-clip)">
               {bars.map((bar, idx) => {
                 const totalWidth = data.totalWidth || 1;
-                const xPos = (bar.x + bar.width / 2) / totalWidth; // Use center of bar for sampling
+                const scaledWidth = bar.width * barWidthScale;
+                const xOffset = (bar.width - scaledWidth) / 2;
+                
+                // Calculate xPos for sampling, including horizontal offset
+                // horizontalOffset is -1 to 1, we want to shift the sampling position
+                const xPos = ((bar.x + bar.width / 2) / totalWidth) - horizontalOffset;
                 
                 let finalSegments: { start: number; end: number }[] = [];
 
@@ -239,10 +248,10 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
 
                 return merged.map((seg, segIdx) => (
                   <rect
-                    key={`${idx}-${segIdx}-${seg.start}-${seg.end}-${safeDistortion}-${safeSafeZone}-${data.text}`}
-                    x={bar.x + padding}
+                    key={`${idx}-${segIdx}-${seg.start}-${seg.end}-${safeDistortion}-${safeSafeZone}-${data.text}-${horizontalOffset}-${barWidthScale}`}
+                    x={bar.x + padding + xOffset}
+                    width={scaledWidth}
                     y={seg.start * barcodeHeight}
-                    width={bar.width}
                     height={Math.max(0.5, (seg.end - seg.start) * barcodeHeight)}
                     fill={color}
                     shapeRendering="crispEdges"
@@ -275,16 +284,42 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
 
             {/* Safe Zone Indicator */}
             {showSafeZone && (
-              <line
-                x1="0"
-                y1={barcodeHeight * (1 - safeSafeZone)}
-                x2={viewBoxWidth}
-                y2={barcodeHeight * (1 - safeSafeZone)}
-                stroke="red"
-                strokeWidth="0.22"
-                strokeDasharray="1 1"
-                opacity="0.5"
-              />
+              <>
+                <line
+                  x1="0"
+                  y1={barcodeHeight * (1 - safeSafeZone)}
+                  x2={viewBoxWidth}
+                  y2={barcodeHeight * (1 - safeSafeZone)}
+                  stroke="red"
+                  strokeWidth="0.5"
+                  strokeDasharray="2 2"
+                  opacity="0.8"
+                />
+                {silhouetteData && (
+                  <>
+                    <line
+                      x1={padding + (silhouetteData.minX / 400) * (data.totalWidth)}
+                      y1="0"
+                      x2={padding + (silhouetteData.minX / 400) * (data.totalWidth)}
+                      y2={barcodeHeight}
+                      stroke="red"
+                      strokeWidth="0.5"
+                      strokeDasharray="2 2"
+                      opacity="0.8"
+                    />
+                    <line
+                      x1={padding + (silhouetteData.maxX / 400) * (data.totalWidth)}
+                      y1="0"
+                      x2={padding + (silhouetteData.maxX / 400) * (data.totalWidth)}
+                      y2={barcodeHeight}
+                      stroke="red"
+                      strokeWidth="0.5"
+                      strokeDasharray="2 2"
+                      opacity="0.8"
+                    />
+                  </>
+                )}
+              </>
             )}
           </svg>
         </div>

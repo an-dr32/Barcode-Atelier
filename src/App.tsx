@@ -172,6 +172,8 @@ interface SavedBarcode {
   silhouette: string | null;
   distortion: number;
   safeZone: number;
+  horizontalOffset: number;
+  barWidthScale: number;
   barcodeHeight: number;
   color: string;
   bgColor: string;
@@ -193,6 +195,8 @@ export default function App() {
   const [silhouette, setSilhouette] = useState<string | null>(null);
   const [distortion, setDistortion] = useState(0.5);
   const [safeZone, setSafeZone] = useState(0.2);
+  const [horizontalOffset, setHorizontalOffset] = useState(0);
+  const [barWidthScale, setBarWidthScale] = useState(1);
   const [barcodeHeight, setBarcodeHeight] = useState(150);
   const [isDragging, setIsDragging] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -216,6 +220,20 @@ export default function App() {
     if (v && v.length > 0) {
       const val = v[0];
       if (!isNaN(val)) setSafeZone(val);
+    }
+  }, []);
+
+  const handleHorizontalOffsetChange = useCallback((v: number[]) => {
+    if (v && v.length > 0) {
+      const val = v[0];
+      if (!isNaN(val)) setHorizontalOffset(val);
+    }
+  }, []);
+
+  const handleBarWidthScaleChange = useCallback((v: number[]) => {
+    if (v && v.length > 0) {
+      const val = v[0];
+      if (!isNaN(val)) setBarWidthScale(val);
     }
   }, []);
 
@@ -362,6 +380,8 @@ export default function App() {
       silhouette,
       distortion,
       safeZone,
+      horizontalOffset,
+      barWidthScale,
       barcodeHeight,
       color,
       bgColor,
@@ -379,6 +399,8 @@ export default function App() {
     setSilhouette(bc.silhouette);
     setDistortion(bc.distortion);
     setSafeZone(bc.safeZone);
+    setHorizontalOffset(bc.horizontalOffset || 0);
+    setBarWidthScale(bc.barWidthScale || 1);
     setBarcodeHeight(bc.barcodeHeight);
     setColor(bc.color);
     setBgColor(bc.bgColor);
@@ -473,7 +495,7 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-lg font-bold tracking-tight">Barcode Atelier</h1>
-              <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">Artistic Generator</p>
+              <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">by Andres De Moya</p>
             </div>
           </div>
           
@@ -489,7 +511,7 @@ export default function App() {
           </div>
         </header>
 
-        <main className="flex h-[calc(100vh-64px)] overflow-hidden">
+        <main className="flex min-h-[calc(100vh-64px)]">
           {/* Left Panel: Inputs */}
           <aside className="w-80 border-right border-zinc-200 bg-white flex flex-col">
             <ScrollArea className="flex-1">
@@ -748,6 +770,8 @@ export default function App() {
                     silhouette={silhouette}
                     distortion={distortion}
                     safeZone={safeZone}
+                    horizontalOffset={horizontalOffset}
+                    barWidthScale={barWidthScale}
                     barcodeHeight={barcodeHeight}
                     color={color}
                     backgroundColor={bgColor}
@@ -880,6 +904,41 @@ export default function App() {
 
                     <div className="space-y-3">
                       <EditableNumber 
+                        label="Horizontal Offset" 
+                        value={Math.round(horizontalOffset * 100)} 
+                        onChange={(val) => setHorizontalOffset(val / 100)} 
+                        min={-100}
+                        max={100}
+                        suffix="%"
+                      />
+                      <Slider 
+                        value={[horizontalOffset]} 
+                        onValueChange={handleHorizontalOffsetChange} 
+                        min={-1}
+                        max={1} 
+                        step={0.01} 
+                        className="py-4"
+                      />
+                    </div>
+
+                    <div className="space-y-3">
+                      <EditablePercentage 
+                        label="Line Thickness" 
+                        value={barWidthScale} 
+                        onChange={(val) => setBarWidthScale(val)} 
+                      />
+                      <Slider 
+                        value={[barWidthScale]} 
+                        onValueChange={handleBarWidthScaleChange} 
+                        min={0.1}
+                        max={2} 
+                        step={0.01} 
+                        className="py-4"
+                      />
+                    </div>
+
+                    <div className="space-y-3">
+                      <EditableNumber 
                         label="Vertical Scale" 
                         value={barcodeHeight} 
                         onChange={(val) => setBarcodeHeight(val)} 
@@ -906,7 +965,7 @@ export default function App() {
                       <Slider 
                         value={[safeZone]} 
                         onValueChange={handleSafeZoneChange} 
-                        min={0.1}
+                        min={0}
                         max={0.5} 
                         step={0.01} 
                         className="py-4"
