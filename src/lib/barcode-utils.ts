@@ -113,10 +113,13 @@ export function generateBarcodeData(text: string, type: BarcodeType): BarcodeDat
   }
 }
 
-export function calculateScannability(binary: string, distortionFactor: number): number {
-  // Simple heuristic: 100 is perfect, decreases with distortion
-  // In a real app, this would be more complex (checking contrast, module width, etc.)
+export function calculateScannability(binary: string, distortionFactor: number, safeZoneFactor: number = 0.2): number {
+  // Simple heuristic: 100 is perfect, decreases with distortion, increases with safe zone
   const baseScore = 100;
-  const penalty = distortionFactor * 50; // Max 50% penalty for distortion
-  return Math.max(0, Math.min(100, baseScore - penalty));
+  
+  // Distortion penalty is reduced if safe zone is large
+  // If safeZone is 1.0, the barcode is perfectly scannable regardless of distortion
+  const penalty = distortionFactor * 60 * (1 - safeZoneFactor);
+  
+  return Math.max(10, Math.min(100, Math.round(baseScore - penalty)));
 }

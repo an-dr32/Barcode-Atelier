@@ -93,6 +93,71 @@ const EditablePercentage = ({
   );
 };
 
+const EditableNumber = ({ 
+  value, 
+  onChange, 
+  label,
+  min = 0,
+  max = 1000,
+  suffix = ""
+}: { 
+  value: number; 
+  onChange: (val: number) => void; 
+  label: string;
+  min?: number;
+  max?: number;
+  suffix?: string;
+}) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [tempValue, setTempValue] = useState(value.toString());
+
+  useEffect(() => {
+    setTempValue(value.toString());
+  }, [value]);
+
+  const handleBlur = () => {
+    setIsEditing(false);
+    const num = parseInt(tempValue);
+    if (!isNaN(num)) {
+      onChange(Math.max(min, Math.min(max, num)));
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleBlur();
+    if (e.key === 'Escape') {
+      setIsEditing(false);
+      setTempValue(value.toString());
+    }
+  };
+
+  return (
+    <div className="flex justify-between items-center">
+      <Label className="text-xs font-semibold">{label}</Label>
+      {isEditing ? (
+        <div className="flex items-center gap-1">
+          <Input
+            className="h-6 w-16 text-[10px] font-mono p-1 text-right"
+            value={tempValue}
+            onChange={(e) => setTempValue(e.target.value)}
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
+            autoFocus
+          />
+          {suffix && <span className="text-[10px] font-mono text-zinc-400">{suffix}</span>}
+        </div>
+      ) : (
+        <span 
+          className="text-[10px] font-mono text-zinc-400 cursor-pointer hover:text-zinc-900 transition-colors"
+          onClick={() => setIsEditing(true)}
+        >
+          {value}{suffix}
+        </span>
+      )}
+    </div>
+  );
+};
+
 export default function App() {
   // State
   const [inputText, setInputText] = useState('123456789012');
@@ -203,7 +268,19 @@ export default function App() {
     toast.success('Preset shape applied');
   };
 
-  const scannabilityScore = calculateScannability(barcodeData?.binary || '', distortion);
+  const setWaveMode = () => {
+    setSilhouette(null);
+    setDistortion(0.5);
+    toast.success('Wave mode activated');
+  };
+
+  const setSquareMode = () => {
+    setSilhouette(null);
+    setDistortion(0);
+    toast.success('Standard square mode activated');
+  };
+
+  const scannabilityScore = calculateScannability(barcodeData?.binary || '', distortion, safeZone);
 
   const getScoreColor = (score: number) => {
     if (score > 80) return 'text-emerald-500';
@@ -328,6 +405,44 @@ export default function App() {
                   <div className="space-y-4">
                     {/* Preset Shapes */}
                     <div className="grid grid-cols-5 gap-2">
+                      <Tooltip>
+                        <TooltipTrigger
+                          onClick={setSquareMode}
+                          className={cn(
+                            "aspect-square w-full rounded-lg border flex items-center justify-center transition-all duration-300 hover:border-zinc-900",
+                            (!silhouette && distortion === 0)
+                              ? "bg-zinc-900 border-zinc-900 text-white ring-2 ring-zinc-900 ring-offset-2" 
+                              : "bg-zinc-50 border-zinc-200 text-zinc-400"
+                          )}
+                        >
+                          <div className="w-6 h-6 flex items-center justify-center">
+                            <div className="w-4 h-4 border-2 border-current rounded-sm" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Standard Square</p>
+                        </TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger
+                          onClick={setWaveMode}
+                          className={cn(
+                            "aspect-square w-full rounded-lg border flex items-center justify-center transition-all duration-300 hover:border-zinc-900",
+                            (!silhouette && distortion > 0)
+                              ? "bg-zinc-900 border-zinc-900 text-white ring-2 ring-zinc-900 ring-offset-2" 
+                              : "bg-zinc-50 border-zinc-200 text-zinc-400"
+                          )}
+                        >
+                          <div className="w-6 h-6 flex items-center justify-center">
+                            <Zap className="w-4 h-4" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Default Wave</p>
+                        </TooltipContent>
+                      </Tooltip>
+
                       {PRESET_SHAPES.map((shape) => (
                         <div key={shape.name}>
                           <Tooltip>
@@ -484,15 +599,19 @@ export default function App() {
                     </div>
 
                     <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <Label className="text-xs font-semibold">Vertical Scale</Label>
-                        <span className="text-[10px] font-mono text-zinc-400">{barcodeHeight}px</span>
-                      </div>
+                      <EditableNumber 
+                        label="Vertical Scale" 
+                        value={barcodeHeight} 
+                        onChange={(val) => setBarcodeHeight(val)} 
+                        min={50}
+                        max={500}
+                        suffix="px"
+                      />
                       <Slider 
                         value={[barcodeHeight]} 
                         onValueChange={handleHeightChange} 
                         min={50}
-                        max={300} 
+                        max={500} 
                         step={1} 
                         className="py-4"
                       />
