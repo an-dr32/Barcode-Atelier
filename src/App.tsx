@@ -35,7 +35,8 @@ import {
   History,
   RotateCcw,
   Undo2,
-  Redo2
+  Redo2,
+  Search
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
@@ -270,6 +271,10 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Search State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   // Undo/Redo History
   const [history, setHistory] = useState<any[]>([]);
@@ -626,7 +631,12 @@ export default function App() {
         
         {/* Header */}
         <header className="h-16 border-bottom border-zinc-200 bg-white/80 backdrop-blur-md sticky top-0 z-50 flex items-center justify-between px-6">
-          <div className="flex items-center gap-3">
+          <a 
+            href="https://andresdm-portfolio-site.vercel.app/" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+          >
             <div className="w-10 h-10 bg-zinc-900 rounded-lg flex items-center justify-center">
               <Barcode className="text-white w-6 h-6" />
             </div>
@@ -634,7 +644,7 @@ export default function App() {
               <h1 className="text-lg font-bold tracking-tight">Barcode Atelier</h1>
               <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">by Andres De Moya</p>
             </div>
-          </div>
+          </a>
           
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={exportAsSvg} className="gap-2">
@@ -924,7 +934,7 @@ export default function App() {
             {/* Save Section */}
             <div className="z-20 w-full max-w-md mb-4 px-6">
               <Card className="bg-white border-zinc-200 shadow-sm rounded-xl overflow-hidden">
-                <div className="p-3 space-y-2">
+                <div className="px-3 py-1.5 space-y-2">
                   <div className="space-y-1">
                     <Label htmlFor="save-name" className="text-[10px] uppercase text-zinc-400 font-bold tracking-tight">Barcode Name</Label>
                     <div className="flex gap-2">
@@ -955,8 +965,43 @@ export default function App() {
                   <History className="w-3.5 h-3.5 text-zinc-400" />
                   <span className="text-[9px] font-bold uppercase text-zinc-500 tracking-widest">Saved Barcodes</span>
                 </div>
-                <span className="text-[9px] font-bold text-zinc-400 bg-zinc-100 px-2 py-0.5 rounded-full">{savedBarcodes.length}</span>
+                <div className="flex items-center gap-3">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className={cn("h-6 w-6 text-zinc-400 hover:text-zinc-900", isSearchOpen && "text-zinc-900 bg-zinc-100")}
+                    onClick={() => {
+                      setIsSearchOpen(!isSearchOpen);
+                      if (isSearchOpen) setSearchQuery('');
+                    }}
+                  >
+                    <Search className="w-3 h-3" />
+                  </Button>
+                  <span className="text-[9px] font-bold text-zinc-400 bg-zinc-100 px-2 py-0.5 rounded-full">{savedBarcodes.length}</span>
+                </div>
               </div>
+
+              <AnimatePresence>
+                {isSearchOpen && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="px-6 py-2 border-b border-zinc-50 overflow-hidden"
+                  >
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-zinc-400" />
+                      <Input 
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search by name, data, type, or date..."
+                        className="h-7 text-[10px] pl-7 bg-zinc-50 border-zinc-100 focus-visible:ring-zinc-900"
+                        autoFocus
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
               
               <div 
                 ref={scrollRef}
@@ -976,8 +1021,20 @@ export default function App() {
                       <p className="text-[10px] font-medium">No saved barcodes yet</p>
                     </div>
                   ) : (
-                    savedBarcodes.map((bc) => (
-                      <motion.div
+                    savedBarcodes
+                      .filter(bc => {
+                        if (!searchQuery) return true;
+                        const q = searchQuery.toLowerCase();
+                        const dateStr = new Date(bc.timestamp).toLocaleString().toLowerCase();
+                        return (
+                          bc.name.toLowerCase().includes(q) ||
+                          bc.text.toLowerCase().includes(q) ||
+                          bc.type.toLowerCase().includes(q) ||
+                          dateStr.includes(q)
+                        );
+                      })
+                      .map((bc) => (
+                        <motion.div
                         layout
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
@@ -991,8 +1048,22 @@ export default function App() {
                             <p className="text-[8px] text-zinc-500 truncate">{bc.text}</p>
                             <p className="text-[8px] text-zinc-400 uppercase font-bold tracking-tighter">{bc.type}</p>
                           </div>
-                          <div className="flex-1 flex items-center justify-center opacity-30 group-hover:opacity-100 transition-opacity">
-                            <Barcode className="w-6 h-6 text-zinc-400 group-hover:text-zinc-900" />
+                          <div className="flex-1 flex items-center justify-center overflow-hidden">
+                            <BarcodeCanvas 
+                              data={generateBarcodeData(bc.text, bc.type)}
+                              silhouette={bc.silhouette}
+                              distortion={bc.distortion}
+                              safeZone={bc.safeZone}
+                              horizontalOffset={bc.horizontalOffset}
+                              barWidthScale={bc.barWidthScale}
+                              logoSmoothing={bc.logoSmoothing}
+                              logoDetail={bc.logoDetail}
+                              barcodeHeight={bc.barcodeHeight}
+                              color={bc.color}
+                              backgroundColor={bc.bgColor}
+                              showSafeZone={false}
+                              isMini={true}
+                            />
                           </div>
                           <div className="text-[8px] text-zinc-400 text-right">
                             {new Date(bc.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1218,6 +1289,31 @@ export default function App() {
             </ScrollArea>
           </aside>
         </main>
+
+        <footer className="border-t border-zinc-200 bg-white py-6 px-6">
+          <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <Barcode className="w-4 h-4 text-zinc-900" />
+                <span className="text-xs font-bold tracking-tight">Barcode Atelier</span>
+              </div>
+              <p className="text-[10px] text-zinc-400 max-w-xs border-l border-zinc-100 pl-6 hidden md:block">
+                Professional-grade artistic barcode generator.
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-6">
+              <div className="text-[11px] text-zinc-500">
+                Created by <a href="https://andresdm-portfolio-site.vercel.app/" target="_blank" rel="noopener noreferrer" className="text-zinc-900 font-bold hover:underline">Andres De Moya</a>
+              </div>
+              <div className="flex items-center gap-3 text-[9px] uppercase tracking-widest font-bold text-zinc-300">
+                <span>© 2025</span>
+                <span className="w-1 h-1 bg-zinc-200 rounded-full" />
+                <span>v1.2.1</span>
+              </div>
+            </div>
+          </div>
+        </footer>
       </div>
     </TooltipProvider>
   );

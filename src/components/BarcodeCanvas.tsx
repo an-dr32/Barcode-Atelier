@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { BarcodeData } from '../lib/barcode-utils';
+import { cn } from '@/lib/utils';
 
 interface BarcodeCanvasProps {
   data: BarcodeData | null;
@@ -16,6 +17,7 @@ interface BarcodeCanvasProps {
   backgroundColor: string;
   showSafeZone: boolean;
   error?: string | null;
+  isMini?: boolean;
 }
 
 export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
@@ -31,7 +33,8 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
   color,
   backgroundColor,
   showSafeZone,
-  error
+  error,
+  isMini = false
 }) => {
   const [silhouetteData, setSilhouetteData] = useState<{
     segments: { start: number; end: number }[][];
@@ -174,7 +177,10 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
   const safeSafeZone = (typeof safeZone === 'number' && !isNaN(safeZone)) ? safeZone : 0.2;
 
   return (
-    <div className="relative w-full aspect-square max-w-2xl mx-auto bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden border border-zinc-200 flex items-center justify-center p-12 transition-all duration-500" style={{ backgroundColor }}>
+    <div className={cn(
+      "relative w-full aspect-square max-w-2xl mx-auto bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden border border-zinc-200 flex items-center justify-center transition-all duration-500",
+      isMini ? "p-2 shadow-none border-none rounded-none bg-transparent" : "p-12"
+    )} style={{ backgroundColor: isMini ? 'transparent' : backgroundColor }}>
       {data ? (
         <div className="w-full h-full flex flex-col items-center">
           <svg
@@ -276,9 +282,11 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
                 }
 
                 // Ensure Safe Zone is always present for scannability
-                const safeStart = 1 - safeSafeZone;
-                const safeEnd = 1;
-                finalSegments.push({ start: safeStart, end: safeEnd });
+                if (safeSafeZone > 0) {
+                  const safeStart = 1 - safeSafeZone;
+                  const safeEnd = 1;
+                  finalSegments.push({ start: safeStart, end: safeEnd });
+                }
 
                 // Merge overlapping segments
                 finalSegments.sort((a, b) => a.start - b.start);
@@ -311,26 +319,30 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
             </g>
 
             {/* Baseline */}
-            <line 
-              x1={padding} 
-              y1={barcodeHeight} 
-              x2={viewBoxWidth - padding} 
-              y2={barcodeHeight} 
-              stroke={color} 
-              strokeWidth="0.5"
-              opacity="0.3"
-            />
+            {safeSafeZone > 0 && (
+              <line 
+                x1={padding} 
+                y1={barcodeHeight} 
+                x2={viewBoxWidth - padding} 
+                y2={barcodeHeight} 
+                stroke={color} 
+                strokeWidth="0.5"
+                opacity="0.3"
+              />
+            )}
 
             {/* Barcode Text */}
-            <text
-              x={viewBoxWidth / 2}
-              y={barcodeHeight + 15}
-              textAnchor="middle"
-              fill={color}
-              className="font-mono text-[7px] font-bold tracking-[0.3em]"
-            >
-              {data.text}
-            </text>
+            {!isMini && (
+              <text
+                x={viewBoxWidth / 2}
+                y={barcodeHeight + 15}
+                textAnchor="middle"
+                fill={color}
+                className="font-mono text-[7px] font-bold tracking-[0.3em]"
+              >
+                {data.text}
+              </text>
+            )}
 
             {/* Safe Zone Indicator */}
             {showSafeZone && (
