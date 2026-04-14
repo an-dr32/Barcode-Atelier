@@ -549,9 +549,9 @@ export default function App() {
                               : "bg-zinc-50 border-zinc-200 text-zinc-400"
                           )}
                         >
-                          <div className="w-6 h-6 flex items-center justify-center">
-                            <div className="w-4 h-4 border-2 border-current rounded-sm" />
-                          </div>
+                          <span className="w-6 h-6 flex items-center justify-center">
+                            <span className="w-4 h-4 border-2 border-current rounded-sm" />
+                          </span>
                         </TooltipTrigger>
                         <TooltipContent>
                           <p>Standard Square</p>
@@ -568,9 +568,9 @@ export default function App() {
                               : "bg-zinc-50 border-zinc-200 text-zinc-400"
                           )}
                         >
-                          <div className="w-6 h-6 flex items-center justify-center">
+                          <span className="w-6 h-6 flex items-center justify-center">
                             <Waves className="w-4 h-4" />
-                          </div>
+                          </span>
                         </TooltipTrigger>
                         <TooltipContent>
                           <p>Default Wave</p>
@@ -589,11 +589,11 @@ export default function App() {
                                   : "bg-zinc-50 border-zinc-200 text-zinc-400"
                               )}
                             >
-                              <div className="w-6 h-6 overflow-hidden flex items-center justify-center">
+                              <span className="w-6 h-6 overflow-hidden flex items-center justify-center">
                                 <svg viewBox="0 0 400 400" className="w-full h-full fill-current">
                                   <path d={shape.path} />
                                 </svg>
-                              </div>
+                              </span>
                             </TooltipTrigger>
                             <TooltipContent>
                               <p>{shape.name}</p>
@@ -612,38 +612,34 @@ export default function App() {
                         </div>
                         <div className="grid grid-cols-5 gap-2">
                           {customSilhouettes.map((cs) => (
-                            <div key={cs.id}>
+                            <div key={cs.id} className="relative group">
                               <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div
-                                    onClick={() => handleCustomSelect(cs)}
-                                    className={cn(
-                                      "aspect-square w-full rounded-lg border flex items-center justify-center transition-all duration-300 hover:border-zinc-900 overflow-hidden p-1 group relative cursor-pointer",
-                                      silhouette === cs.path 
-                                        ? "bg-zinc-900 border-zinc-900 text-white ring-2 ring-zinc-900 ring-offset-2" 
-                                        : "bg-zinc-50 border-zinc-200 text-zinc-400"
-                                    )}
-                                  >
-                                    <div className="w-full h-full flex items-center justify-center">
-                                      <img 
-                                        src={cs.previewUrl} 
-                                        alt="Custom" 
-                                        className={cn("w-full h-full object-contain", silhouette === cs.path && "invert brightness-200")} 
-                                        referrerPolicy="no-referrer"
-                                      />
-                                    </div>
-                                    <button
-                                      onClick={(e) => deleteCustomSilhouette(e, cs.id)}
-                                      className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-rose-600 z-10"
-                                    >
-                                      <Trash2 className="w-2 h-2" />
-                                    </button>
-                                  </div>
+                                <TooltipTrigger
+                                  onClick={() => handleCustomSelect(cs)}
+                                  className={cn(
+                                    "aspect-square w-full rounded-lg border flex items-center justify-center transition-all duration-300 hover:border-zinc-900 overflow-hidden p-1",
+                                    silhouette === cs.path 
+                                      ? "bg-zinc-900 border-zinc-900 text-white ring-2 ring-zinc-900 ring-offset-2" 
+                                      : "bg-zinc-50 border-zinc-200 text-zinc-400"
+                                  )}
+                                >
+                                  <img 
+                                    src={cs.previewUrl} 
+                                    alt="Custom" 
+                                    className={cn("w-full h-full object-contain", silhouette === cs.path && "invert brightness-200")} 
+                                    referrerPolicy="no-referrer"
+                                  />
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   <p>Custom Logo</p>
                                 </TooltipContent>
                               </Tooltip>
+                              <button
+                                onClick={(e) => deleteCustomSilhouette(e, cs.id)}
+                                className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-rose-600 z-10"
+                              >
+                                <Trash2 className="w-2 h-2" />
+                              </button>
                             </div>
                           ))}
                         </div>
