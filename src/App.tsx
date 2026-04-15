@@ -798,7 +798,7 @@ export default function App() {
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        className="space-y-3 overflow-hidden"
+                        className="space-y-3 overflow-hidden px-1 pt-1 pb-1"
                       >
                         <Input 
                           value={silhouetteText}
@@ -868,10 +868,10 @@ export default function App() {
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        className="space-y-4 overflow-hidden"
+                        className="space-y-4 overflow-hidden px-1 pt-1 pb-1"
                       >
                         {/* Preset Shapes */}
-                        <div className="grid grid-cols-5 gap-2">
+                        <div className="grid grid-cols-5 gap-2 pt-1">
                       <Tooltip>
                         <TooltipTrigger
                           onClick={setSquareMode}
