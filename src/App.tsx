@@ -190,6 +190,9 @@ interface SavedBarcode {
   logoSmoothing: number;
   logoDetail: number;
   barcodeHeight: number;
+  silhouetteGap: number;
+  showNumbers: boolean;
+  numbersGap: number;
   color: string;
   bgColor: string;
   silhouetteText?: string;
@@ -218,6 +221,9 @@ export default function App() {
   const [logoSmoothing, setLogoSmoothing] = useState(0.2);
   const [logoDetail, setLogoDetail] = useState(0.1);
   const [barcodeHeight, setBarcodeHeight] = useState(150);
+  const [silhouetteGap, setSilhouetteGap] = useState(0);
+  const [showNumbers, setShowNumbers] = useState(true);
+  const [numbersGap, setNumbersGap] = useState(15);
   const [isDragging, setIsDragging] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [customSilhouettes, setCustomSilhouettes] = useState<CustomSilhouette[]>([]);
@@ -244,7 +250,10 @@ export default function App() {
   useEffect(() => {
     if (isNaN(distortion)) setDistortion(0.5);
     if (isNaN(safeZone)) setSafeZone(0.2);
-  }, [distortion, safeZone]);
+    if (isNaN(barcodeHeight)) setBarcodeHeight(150);
+    if (isNaN(silhouetteGap)) setSilhouetteGap(0);
+    if (isNaN(numbersGap)) setNumbersGap(15);
+  }, [distortion, safeZone, barcodeHeight, silhouetteGap, numbersGap]);
 
   const handleDistortionChange = useCallback((v: number[]) => {
     if (v && v.length > 0) {
@@ -292,6 +301,20 @@ export default function App() {
     if (v && v.length > 0) {
       const val = v[0];
       if (!isNaN(val)) setBarcodeHeight(val);
+    }
+  }, []);
+
+  const handleSilhouetteGapChange = useCallback((v: number[]) => {
+    if (v && v.length > 0) {
+      const val = v[0];
+      if (!isNaN(val)) setSilhouetteGap(val);
+    }
+  }, []);
+
+  const handleNumbersGapChange = useCallback((v: number[]) => {
+    if (v && v.length > 0) {
+      const val = v[0];
+      if (!isNaN(val)) setNumbersGap(val);
     }
   }, []);
   const [color, setColor] = useState('#000000');
@@ -413,6 +436,9 @@ export default function App() {
     setLogoSmoothing(0.2);
     setLogoDetail(0.1);
     setBarcodeHeight(150);
+    setSilhouetteGap(0);
+    setShowNumbers(true);
+    setNumbersGap(15);
     toast.success('Transformations reset to default');
   };
 
@@ -594,6 +620,9 @@ export default function App() {
       logoSmoothing,
       logoDetail,
       barcodeHeight,
+      silhouetteGap,
+      showNumbers,
+      numbersGap,
       color,
       bgColor,
       silhouetteText,
@@ -618,6 +647,9 @@ export default function App() {
     setLogoSmoothing(bc.logoSmoothing ?? 0.2);
     setLogoDetail(bc.logoDetail ?? 0.1);
     setBarcodeHeight(bc.barcodeHeight);
+    setSilhouetteGap(bc.silhouetteGap || 0);
+    setShowNumbers(bc.showNumbers ?? true);
+    setNumbersGap(bc.numbersGap ?? 15);
     setColor(bc.color);
     setBgColor(bc.bgColor);
     setSilhouetteText(bc.silhouetteText || '');
@@ -1068,7 +1100,7 @@ export default function App() {
             {/* Background Pattern */}
             <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 0)', backgroundSize: '24px 24px' }} />
             
-            <div className="flex-1 w-full flex items-center justify-center p-6 relative">
+            <div className="flex-1 w-full flex items-center justify-center p-2 relative">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={`${inputText}-${barcodeType}-${silhouette}`}
@@ -1088,6 +1120,9 @@ export default function App() {
                     logoSmoothing={logoSmoothing}
                     logoDetail={logoDetail}
                     barcodeHeight={barcodeHeight}
+                    silhouetteGap={silhouetteGap}
+                    showNumbers={showNumbers}
+                    numbersGap={numbersGap}
                     color={color}
                     backgroundColor={bgColor}
                     showSafeZone={showSafeZone}
@@ -1098,7 +1133,7 @@ export default function App() {
             </div>
 
             {/* Save Section */}
-            <div className="z-20 w-full max-w-md mb-4 px-6">
+            <div className="z-20 w-full max-w-md mb-2 px-6">
               <Card className="bg-white border-zinc-200 shadow-sm rounded-xl overflow-hidden">
                 <div className="px-3 py-1.5 space-y-2">
                   <div className="space-y-1">
@@ -1130,7 +1165,7 @@ export default function App() {
             </div>
 
             {/* Saved Barcodes Drawer */}
-            <div className="w-full h-80 bg-white border-t border-zinc-200 z-20 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.04)] relative pb-6">
+            <div className="w-full h-64 bg-white border-t border-zinc-200 z-20 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.04)] relative pb-4">
               <div className="px-6 py-2.5 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/30">
                 <div className="flex items-center gap-2">
                   <History className="w-3.5 h-3.5 text-zinc-400" />
@@ -1414,6 +1449,50 @@ export default function App() {
                             <Label htmlFor="show-safe-zone" className="text-[10px] text-zinc-500">Show Guide Overlay</Label>
                             <Switch id="show-safe-zone" checked={showSafeZone} onCheckedChange={setShowSafeZone} />
                           </div>
+
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor="show-numbers" className="text-[10px] text-zinc-500">Show Barcode Numbers</Label>
+                            <Switch id="show-numbers" checked={showNumbers} onCheckedChange={setShowNumbers} />
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <EditableNumber 
+                            label="Silhouette Separation" 
+                            value={silhouetteGap} 
+                            onChange={(val) => setSilhouetteGap(val)} 
+                            min={0}
+                            max={100}
+                            suffix="px"
+                          />
+                          <Slider 
+                            value={[silhouetteGap]} 
+                            onValueChange={handleSilhouetteGapChange} 
+                            min={0}
+                            max={100} 
+                            step={1} 
+                            className="py-4"
+                          />
+                        </div>
+
+                        <div className="space-y-3">
+                          <EditableNumber 
+                            label="Numbers Separation" 
+                            value={numbersGap} 
+                            onChange={(val) => setNumbersGap(val)} 
+                            min={0}
+                            max={100}
+                            suffix="px"
+                          />
+                          <Slider 
+                            value={[numbersGap]} 
+                            onValueChange={handleNumbersGapChange} 
+                            min={0}
+                            max={100} 
+                            step={1} 
+                            className="py-4"
+                            disabled={!showNumbers}
+                          />
                         </div>
                       </motion.div>
                     )}

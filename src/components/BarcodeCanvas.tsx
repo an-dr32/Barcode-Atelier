@@ -13,6 +13,9 @@ interface BarcodeCanvasProps {
   logoSmoothing: number;
   logoDetail: number;
   barcodeHeight?: number;
+  silhouetteGap: number;
+  showNumbers: boolean;
+  numbersGap: number;
   color: string;
   backgroundColor: string;
   showSafeZone: boolean;
@@ -30,6 +33,9 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
   logoSmoothing,
   logoDetail,
   barcodeHeight = 150,
+  silhouetteGap,
+  showNumbers,
+  numbersGap,
   color,
   backgroundColor,
   showSafeZone,
@@ -169,12 +175,15 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
     }
   }, [silhouette]);
 
-  const viewBoxWidth = data ? Math.max(120, data.totalWidth + 40) : 120;
-  const viewBoxHeight = barcodeHeight + 30; // Dynamic height
-  const padding = (viewBoxWidth - (data?.totalWidth || 0)) / 2;
-
   const safeDistortion = (typeof distortion === 'number' && !isNaN(distortion)) ? distortion : 0.5;
   const safeSafeZone = (typeof safeZone === 'number' && !isNaN(safeZone)) ? safeZone : 0.2;
+  const safeBarcodeHeight = (typeof barcodeHeight === 'number' && !isNaN(barcodeHeight)) ? barcodeHeight : 150;
+  const safeSilhouetteGap = (typeof silhouetteGap === 'number' && !isNaN(silhouetteGap)) ? silhouetteGap : 0;
+  const safeNumbersGap = (typeof numbersGap === 'number' && !isNaN(numbersGap)) ? numbersGap : 15;
+
+  const viewBoxWidth = data ? Math.max(120, data.totalWidth + 40) : 120;
+  const viewBoxHeight = safeBarcodeHeight + (showNumbers ? safeNumbersGap + 30 : 0) + 10; 
+  const padding = (viewBoxWidth - (data?.totalWidth || 0)) / 2;
 
   return (
     <div className={cn(
@@ -192,7 +201,7 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
           >
             <defs>
               <clipPath id="barcode-clip">
-                <rect x="0" y="0" width={viewBoxWidth} height={barcodeHeight} />
+                <rect x="0" y="0" width={viewBoxWidth} height={safeBarcodeHeight} />
               </clipPath>
             </defs>
 
@@ -304,17 +313,27 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
                   merged.push(current);
                 }
 
-                return merged.map((seg, segIdx) => (
-                  <rect
-                    key={`${idx}-${segIdx}-${seg.start}-${seg.end}-${safeDistortion}-${safeSafeZone}-${data.text}-${horizontalOffset}-${barWidthScale}`}
-                    x={bar.x + padding + xOffset}
-                    width={scaledWidth}
-                    y={seg.start * barcodeHeight}
-                    height={Math.max(0.5, (seg.end - seg.start) * barcodeHeight)}
-                    fill={color}
-                    shapeRendering="crispEdges"
-                  />
-                ));
+                return merged.map((seg, segIdx) => {
+                  const yPos = seg.start * safeBarcodeHeight;
+                  const h = Math.max(0.5, (seg.end - seg.start) * safeBarcodeHeight);
+                  
+                  // Apply silhouette gap: push down segments that are NOT safe zone
+                  const isSafeZone = seg.start >= (1 - safeSafeZone - 0.001);
+                  const adjustedY = (isSafeZone || !silhouetteData) ? yPos : Math.max(0, yPos - safeSilhouetteGap);
+                  const adjustedH = h; // Keep height constant to avoid moving the bottom edge
+
+                  return (
+                    <rect
+                      key={`${idx}-${segIdx}-${seg.start}-${seg.end}-${safeDistortion}-${safeSafeZone}-${data.text}-${horizontalOffset}-${barWidthScale}-${safeSilhouetteGap}`}
+                      x={bar.x + padding + xOffset}
+                      width={scaledWidth}
+                      y={adjustedY}
+                      height={adjustedH}
+                      fill={color}
+                      shapeRendering="crispEdges"
+                    />
+                  );
+                });
               })}
             </g>
 
@@ -322,9 +341,9 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
             {safeSafeZone > 0 && (
               <line 
                 x1={padding} 
-                y1={barcodeHeight} 
+                y1={safeBarcodeHeight} 
                 x2={viewBoxWidth - padding} 
-                y2={barcodeHeight} 
+                y2={safeBarcodeHeight} 
                 stroke={color} 
                 strokeWidth="0.5"
                 opacity="0.3"
@@ -332,13 +351,14 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
             )}
 
             {/* Barcode Text */}
-            {!isMini && (
+            {!isMini && showNumbers && (
               <text
                 x={viewBoxWidth / 2}
-                y={barcodeHeight + 15}
+                y={safeBarcodeHeight + safeNumbersGap + 15}
                 textAnchor="middle"
+                dominantBaseline="middle"
                 fill={color}
-                className="font-mono text-[7px] font-bold tracking-[0.3em]"
+                className="font-mono text-[12px] font-bold tracking-[0.2em]"
               >
                 {data.text}
               </text>
@@ -349,9 +369,9 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
               <>
                 <line
                   x1="0"
-                  y1={barcodeHeight * (1 - safeSafeZone)}
+                  y1={safeBarcodeHeight * (1 - safeSafeZone)}
                   x2={viewBoxWidth}
-                  y2={barcodeHeight * (1 - safeSafeZone)}
+                  y2={safeBarcodeHeight * (1 - safeSafeZone)}
                   stroke="red"
                   strokeWidth="0.5"
                   strokeDasharray="2 2"
@@ -363,7 +383,7 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
                       x1={padding + (silhouetteData.minX / 400) * (data.totalWidth)}
                       y1="0"
                       x2={padding + (silhouetteData.minX / 400) * (data.totalWidth)}
-                      y2={barcodeHeight}
+                      y2={safeBarcodeHeight}
                       stroke="red"
                       strokeWidth="0.5"
                       strokeDasharray="2 2"
@@ -373,7 +393,7 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
                       x1={padding + (silhouetteData.maxX / 400) * (data.totalWidth)}
                       y1="0"
                       x2={padding + (silhouetteData.maxX / 400) * (data.totalWidth)}
-                      y2={barcodeHeight}
+                      y2={safeBarcodeHeight}
                       stroke="red"
                       strokeWidth="0.5"
                       strokeDasharray="2 2"
