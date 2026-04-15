@@ -187,9 +187,9 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
 
   return (
     <div className={cn(
-      "relative w-full aspect-square max-w-2xl mx-auto bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden border border-zinc-200 flex items-center justify-center transition-all duration-500",
+      "relative w-full mx-auto bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden border border-zinc-200 flex items-center justify-center transition-all duration-500",
       isMini ? "p-2 shadow-none border-none rounded-none bg-transparent" : "p-12"
-    )} style={{ backgroundColor: isMini ? 'transparent' : backgroundColor }}>
+    )} style={{ backgroundColor: isMini ? 'transparent' : backgroundColor, aspectRatio: isMini ? 'auto' : '1/1' }}>
       {data ? (
         <div className="w-full h-full flex flex-col items-center">
           <svg

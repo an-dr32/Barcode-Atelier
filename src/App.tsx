@@ -228,6 +228,9 @@ export default function App() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [customSilhouettes, setCustomSilhouettes] = useState<CustomSilhouette[]>([]);
   const [savedBarcodes, setSavedBarcodes] = useState<SavedBarcode[]>([]);
+  const [canvasSize, setCanvasSize] = useState(600);
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeRef = useRef<HTMLDivElement>(null);
 
   // Section Visibility State
   const [visibleSections, setVisibleSections] = useState({
@@ -714,6 +717,42 @@ export default function App() {
     gridScrollRef.current.scrollLeft = scrollGridLeft - walk;
   };
 
+  // Canvas Resizing Logic
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing || !resizeRef.current) return;
+      
+      const rect = resizeRef.current.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      // Since it's centered, distance from center * 2 is the new width
+      const newWidth = Math.abs(e.clientX - centerX) * 2;
+      
+      // Clamp between 200 and 1000
+      setCanvasSize(Math.max(200, Math.min(1000, newWidth)));
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.body.style.cursor = 'ew-resize';
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.body.style.cursor = '';
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
+
   const getScoreColor = (score: number) => {
     if (score > 80) return 'text-emerald-500';
     if (score > 50) return 'text-amber-500';
@@ -1128,12 +1167,14 @@ export default function App() {
             <div className="w-full flex flex-col items-center pt-8 pb-4 px-6 relative">
               <AnimatePresence mode="wait">
                 <motion.div
+                  ref={resizeRef}
                   key={`${inputText}-${barcodeType}-${silhouette}`}
                   initial={{ opacity: 0, scale: 0.95, y: 20 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95, y: -20 }}
                   transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
-                  className="w-full max-w-2xl z-10"
+                  className="z-10 relative group"
+                  style={{ width: canvasSize, maxWidth: '100%' }}
                 >
                   <BarcodeCanvas 
                     data={barcodeData}
@@ -1153,6 +1194,36 @@ export default function App() {
                     showSafeZone={showSafeZone}
                     error={error}
                   />
+
+                  {/* Resize Handles */}
+                  <div 
+                    onMouseDown={handleResizeMouseDown}
+                    className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-32 cursor-ew-resize flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                    title="Drag to resize proportionally"
+                  >
+                    <div className="w-1.5 h-16 bg-zinc-900/10 rounded-full hover:bg-zinc-900/30 transition-colors" />
+                  </div>
+                  <div 
+                    onMouseDown={handleResizeMouseDown}
+                    className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-32 cursor-ew-resize flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                    title="Drag to resize proportionally"
+                  >
+                    <div className="w-1.5 h-16 bg-zinc-900/10 rounded-full hover:bg-zinc-900/30 transition-colors" />
+                  </div>
+
+                  {/* Size Indicator */}
+                  <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-400 bg-white/80 px-2 py-0.5 rounded-full border border-zinc-100">
+                      {Math.round(canvasSize)}px
+                    </span>
+                    <button 
+                      onClick={() => setCanvasSize(600)}
+                      className="p-0.5 bg-white/80 rounded-full border border-zinc-100 text-zinc-400 hover:text-zinc-900 transition-colors"
+                      title="Reset to default size"
+                    >
+                      <RotateCcw className="w-2.5 h-2.5" />
+                    </button>
+                  </div>
                 </motion.div>
               </AnimatePresence>
             </div>
