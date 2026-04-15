@@ -37,9 +37,11 @@ import {
   Undo2,
   Redo2,
   Search,
-  Type
+  Type,
+  GripVertical,
+  LayoutGrid
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, Reorder } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { toPng, toSvg } from 'html-to-image';
 
@@ -231,6 +233,20 @@ export default function App() {
   const [canvasSize, setCanvasSize] = useState(600);
   const [isResizing, setIsResizing] = useState(false);
   const resizeRef = useRef<HTMLDivElement>(null);
+
+  // Transformation Reordering State
+  const [isRearranging, setIsRearranging] = useState(false);
+  const [transformationOrder, setTransformationOrder] = useState([
+    'distortion',
+    'offset',
+    'width',
+    'smoothing',
+    'detail',
+    'height',
+    'safeZone',
+    'silhouetteGap',
+    'numbersGap'
+  ]);
 
   // Section Visibility State
   const [visibleSections, setVisibleSections] = useState({
@@ -794,6 +810,84 @@ export default function App() {
       toast.success('Exported as SVG');
     } catch (err) {
       toast.error('Export failed');
+    }
+  };
+
+  const renderTransformationControl = (id: string) => {
+    switch (id) {
+      case 'distortion':
+        return (
+          <div className="space-y-3">
+            <EditablePercentage label="Distortion Intensity" value={distortion} onChange={setDistortion} />
+            <Slider value={[distortion]} onValueChange={handleDistortionChange} max={1} step={0.01} className="py-4" />
+          </div>
+        );
+      case 'offset':
+        return (
+          <div className="space-y-3">
+            <EditableNumber label="Horizontal Offset" value={Math.round(horizontalOffset * 100)} onChange={(val) => setHorizontalOffset(val / 100)} min={-100} max={100} suffix="%" />
+            <Slider value={[horizontalOffset]} onValueChange={handleHorizontalOffsetChange} min={-1} max={1} step={0.01} className="py-4" />
+          </div>
+        );
+      case 'width':
+        return (
+          <div className="space-y-3">
+            <EditablePercentage label="Line Thickness" value={barWidthScale} onChange={setBarWidthScale} />
+            <Slider value={[barWidthScale]} onValueChange={handleBarWidthScaleChange} min={0.1} max={2} step={0.01} className="py-4" />
+          </div>
+        );
+      case 'smoothing':
+        return (
+          <div className="space-y-3">
+            <EditablePercentage label="Logo Smoothing" value={logoSmoothing} onChange={setLogoSmoothing} />
+            <Slider value={[logoSmoothing]} onValueChange={handleLogoSmoothingChange} min={0} max={1} step={0.01} className="py-4" />
+          </div>
+        );
+      case 'detail':
+        return (
+          <div className="space-y-3">
+            <EditablePercentage label="Logo Detail Filter" value={logoDetail} onChange={setLogoDetail} />
+            <Slider value={[logoDetail]} onValueChange={handleLogoDetailChange} min={0} max={0.5} step={0.01} className="py-4" />
+          </div>
+        );
+      case 'height':
+        return (
+          <div className="space-y-3">
+            <EditableNumber label="Vertical Scale" value={barcodeHeight} onChange={setBarcodeHeight} min={50} max={500} suffix="px" />
+            <Slider value={[barcodeHeight]} onValueChange={handleHeightChange} min={50} max={500} step={1} className="py-4" />
+          </div>
+        );
+      case 'safeZone':
+        return (
+          <div className="space-y-3">
+            <EditablePercentage label="Scan-Safe Zone" value={safeZone} onChange={setSafeZone} />
+            <Slider value={[safeZone]} onValueChange={handleSafeZoneChange} min={0} max={0.5} step={0.01} className="py-4" />
+            <div className="flex items-center justify-between">
+              <Label htmlFor="show-safe-zone" className="text-[10px] text-zinc-500">Show Guide Overlay</Label>
+              <Switch id="show-safe-zone" checked={showSafeZone} onCheckedChange={setShowSafeZone} />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="show-numbers" className="text-[10px] text-zinc-500">Show Barcode Numbers</Label>
+              <Switch id="show-numbers" checked={showNumbers} onCheckedChange={setShowNumbers} />
+            </div>
+          </div>
+        );
+      case 'silhouetteGap':
+        return (
+          <div className="space-y-3">
+            <EditableNumber label="Silhouette Separation" value={silhouetteGap} onChange={setSilhouetteGap} min={0} max={100} suffix="px" />
+            <Slider value={[silhouetteGap]} onValueChange={handleSilhouetteGapChange} min={0} max={100} step={1} className="py-4" />
+          </div>
+        );
+      case 'numbersGap':
+        return (
+          <div className="space-y-3">
+            <EditableNumber label="Numbers Separation" value={numbersGap} onChange={setNumbersGap} min={0} max={100} suffix="px" />
+            <Slider value={[numbersGap]} onValueChange={handleNumbersGapChange} min={0} max={100} step={1} className="py-4" disabled={!showNumbers} />
+          </div>
+        );
+      default:
+        return null;
     }
   };
 
@@ -1491,6 +1585,15 @@ export default function App() {
                       <Button 
                         variant="ghost" 
                         size="icon" 
+                        className={cn("h-6 w-6 transition-colors", isRearranging ? "text-zinc-900 bg-zinc-100" : "text-zinc-400 hover:text-zinc-900")}
+                        onClick={() => setIsRearranging(!isRearranging)}
+                        title={isRearranging ? "Confirm Rearrangement" : "Rearrange Controls"}
+                      >
+                        <LayoutGrid className="w-3 h-3" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
                         className="h-6 w-6 text-zinc-400 hover:text-zinc-900"
                         onClick={resetTransformations}
                       >
@@ -1515,170 +1618,30 @@ export default function App() {
                         exit={{ height: 0, opacity: 0 }}
                         className="space-y-6 overflow-hidden"
                       >
-                        <div className="space-y-3">
-                          <EditablePercentage 
-                            label="Distortion Intensity" 
-                            value={distortion} 
-                            onChange={(val) => setDistortion(val)} 
-                          />
-                          <Slider 
-                            value={[distortion]} 
-                            onValueChange={handleDistortionChange} 
-                            max={1} 
-                            step={0.01} 
-                            className="py-4"
-                          />
-                        </div>
-
-                        <div className="space-y-3">
-                          <EditableNumber 
-                            label="Horizontal Offset" 
-                            value={Math.round(horizontalOffset * 100)} 
-                            onChange={(val) => setHorizontalOffset(val / 100)} 
-                            min={-100}
-                            max={100}
-                            suffix="%"
-                          />
-                          <Slider 
-                            value={[horizontalOffset]} 
-                            onValueChange={handleHorizontalOffsetChange} 
-                            min={-1}
-                            max={1} 
-                            step={0.01} 
-                            className="py-4"
-                          />
-                        </div>
-
-                        <div className="space-y-3">
-                          <EditablePercentage 
-                            label="Line Thickness" 
-                            value={barWidthScale} 
-                            onChange={(val) => setBarWidthScale(val)} 
-                          />
-                          <Slider 
-                            value={[barWidthScale]} 
-                            onValueChange={handleBarWidthScaleChange} 
-                            min={0.1}
-                            max={2} 
-                            step={0.01} 
-                            className="py-4"
-                          />
-                        </div>
-
-                        <div className="space-y-3">
-                          <EditablePercentage 
-                            label="Logo Smoothing" 
-                            value={logoSmoothing} 
-                            onChange={(val) => setLogoSmoothing(val)} 
-                          />
-                          <Slider 
-                            value={[logoSmoothing]} 
-                            onValueChange={handleLogoSmoothingChange} 
-                            min={0}
-                            max={1} 
-                            step={0.01} 
-                            className="py-4"
-                          />
-                        </div>
-
-                        <div className="space-y-3">
-                          <EditablePercentage 
-                            label="Logo Detail Filter" 
-                            value={logoDetail} 
-                            onChange={(val) => setLogoDetail(val)} 
-                          />
-                          <Slider 
-                            value={[logoDetail]} 
-                            onValueChange={handleLogoDetailChange} 
-                            min={0}
-                            max={0.5} 
-                            step={0.01} 
-                            className="py-4"
-                          />
-                        </div>
-
-                        <div className="space-y-3">
-                          <EditableNumber 
-                            label="Vertical Scale" 
-                            value={barcodeHeight} 
-                            onChange={(val) => setBarcodeHeight(val)} 
-                            min={50}
-                            max={500}
-                            suffix="px"
-                          />
-                          <Slider 
-                            value={[barcodeHeight]} 
-                            onValueChange={handleHeightChange} 
-                            min={50}
-                            max={500} 
-                            step={1} 
-                            className="py-4"
-                          />
-                        </div>
-
-                        <div className="space-y-3">
-                          <EditablePercentage 
-                            label="Scan-Safe Zone" 
-                            value={safeZone} 
-                            onChange={(val) => setSafeZone(val)} 
-                          />
-                          <Slider 
-                            value={[safeZone]} 
-                            onValueChange={handleSafeZoneChange} 
-                            min={0}
-                            max={0.5} 
-                            step={0.01} 
-                            className="py-4"
-                          />
-                          <div className="flex items-center justify-between">
-                            <Label htmlFor="show-safe-zone" className="text-[10px] text-zinc-500">Show Guide Overlay</Label>
-                            <Switch id="show-safe-zone" checked={showSafeZone} onCheckedChange={setShowSafeZone} />
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <Label htmlFor="show-numbers" className="text-[10px] text-zinc-500">Show Barcode Numbers</Label>
-                            <Switch id="show-numbers" checked={showNumbers} onCheckedChange={setShowNumbers} />
-                          </div>
-                        </div>
-
-                        <div className="space-y-3">
-                          <EditableNumber 
-                            label="Silhouette Separation" 
-                            value={silhouetteGap} 
-                            onChange={(val) => setSilhouetteGap(val)} 
-                            min={0}
-                            max={100}
-                            suffix="px"
-                          />
-                          <Slider 
-                            value={[silhouetteGap]} 
-                            onValueChange={handleSilhouetteGapChange} 
-                            min={0}
-                            max={100} 
-                            step={1} 
-                            className="py-4"
-                          />
-                        </div>
-
-                        <div className="space-y-3">
-                          <EditableNumber 
-                            label="Numbers Separation" 
-                            value={numbersGap} 
-                            onChange={(val) => setNumbersGap(val)} 
-                            min={0}
-                            max={100}
-                            suffix="px"
-                          />
-                          <Slider 
-                            value={[numbersGap]} 
-                            onValueChange={handleNumbersGapChange} 
-                            min={0}
-                            max={100} 
-                            step={1} 
-                            className="py-4"
-                            disabled={!showNumbers}
-                          />
-                        </div>
+                        <Reorder.Group axis="y" values={transformationOrder} onReorder={setTransformationOrder} className="space-y-6">
+                          {transformationOrder.map((id) => (
+                            <Reorder.Item 
+                              key={id} 
+                              value={id} 
+                              className="relative group/item"
+                              dragListener={isRearranging}
+                            >
+                              <div className={cn(
+                                "transition-all duration-300",
+                                isRearranging && "pl-8 pr-2 py-3 bg-zinc-50/50 border border-dashed border-zinc-200 rounded-xl scale-[0.98] opacity-80"
+                              )}>
+                                {isRearranging && (
+                                  <div className="absolute left-2 top-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing p-1 text-zinc-300 hover:text-zinc-900 transition-colors">
+                                    <GripVertical className="w-4 h-4" />
+                                  </div>
+                                )}
+                                <div className={cn(isRearranging && "pointer-events-none")}>
+                                  {renderTransformationControl(id)}
+                                </div>
+                              </div>
+                            </Reorder.Item>
+                          ))}
+                        </Reorder.Group>
                       </motion.div>
                     )}
                   </AnimatePresence>
