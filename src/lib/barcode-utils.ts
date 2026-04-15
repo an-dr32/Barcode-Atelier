@@ -15,8 +15,13 @@ export interface BarcodeData {
   totalWidth: number;
 }
 
-export function generateBarcodeData(text: string, type: BarcodeType): BarcodeData | null {
+export function generateBarcodeData(text: string, type: BarcodeType, doc?: any): BarcodeData | null {
   if (!text) return null;
+
+  const documentToUse = doc || (typeof document !== 'undefined' ? document : null);
+  if (!documentToUse) {
+    throw new Error('No document implementation provided for barcode generation');
+  }
 
   if (type === 'EAN13') {
     if (!/^\d{12,13}$/.test(text)) return null;
@@ -25,7 +30,7 @@ export function generateBarcodeData(text: string, type: BarcodeType): BarcodeDat
   }
 
   try {
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const svg = documentToUse.createElementNS("http://www.w3.org/2000/svg", "svg");
     JsBarcode(svg, text, {
       format: type,
       displayValue: false,
