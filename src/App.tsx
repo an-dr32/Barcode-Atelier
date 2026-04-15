@@ -689,6 +689,31 @@ export default function App() {
     scrollRef.current.scrollLeft = scrollLeft - walk;
   };
 
+  // Grid Grab-to-scroll logic
+  const gridScrollRef = useRef<HTMLDivElement>(null);
+  const [isDraggingGrid, setIsDraggingGrid] = useState(false);
+  const [startGridX, setStartGridX] = useState(0);
+  const [scrollGridLeft, setScrollGridLeft] = useState(0);
+
+  const handleGridMouseDown = (e: React.MouseEvent) => {
+    if (!gridScrollRef.current) return;
+    setIsDraggingGrid(true);
+    setStartGridX(e.pageX - gridScrollRef.current.offsetLeft);
+    setScrollGridLeft(gridScrollRef.current.scrollLeft);
+  };
+
+  const handleGridMouseUp = () => {
+    setIsDraggingGrid(false);
+  };
+
+  const handleGridMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingGrid || !gridScrollRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - gridScrollRef.current.offsetLeft;
+    const walk = (x - startGridX) * 1.5;
+    gridScrollRef.current.scrollLeft = scrollGridLeft - walk;
+  };
+
   const getScoreColor = (score: number) => {
     if (score > 80) return 'text-emerald-500';
     if (score > 50) return 'text-amber-500';
@@ -1164,12 +1189,12 @@ export default function App() {
               </Card>
             </div>
 
-            {/* Saved Barcodes Drawer */}
-            <div className="w-full h-64 bg-white border-t border-zinc-200 z-20 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.04)] relative pb-4 mt-auto md:mt-0">
+            {/* History Section */}
+            <div className="flex-1 w-full bg-white border-t border-zinc-200 z-20 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.04)] relative overflow-hidden">
               <div className="px-6 py-2.5 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/30">
                 <div className="flex items-center gap-2">
                   <History className="w-3.5 h-3.5 text-zinc-400" />
-                  <span className="text-[9px] font-bold uppercase text-zinc-500 tracking-widest">Saved Barcodes</span>
+                  <span className="text-[9px] font-bold uppercase text-zinc-500 tracking-widest">History & Library</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Button 
@@ -1209,86 +1234,175 @@ export default function App() {
                 )}
               </AnimatePresence>
               
-              <div 
-                ref={scrollRef}
-                onMouseDown={handleMouseDown}
-                onMouseLeave={handleMouseUp}
-                onMouseUp={handleMouseUp}
-                onMouseMove={handleMouseMove}
-                className={cn(
-                  "flex-1 w-full overflow-x-auto overflow-y-hidden select-none scrollbar-thin scrollbar-thumb-zinc-200 scrollbar-track-transparent",
-                  isDraggingScroll ? "cursor-grabbing" : "cursor-grab"
-                )}
-              >
-                <div className="flex gap-4 p-5 min-w-full">
-                  {savedBarcodes.length === 0 ? (
-                    <div className="flex-1 flex flex-col items-center justify-center text-zinc-300 py-4 min-w-[200px] mx-auto">
-                      <Save className="w-6 h-6 mb-2 opacity-20" />
-                      <p className="text-[10px] font-medium">No saved barcodes yet</p>
+              <ScrollArea className="flex-1">
+                <div className="p-6 space-y-8">
+                  {/* Recent Strip (Horizontal) */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between px-1">
+                      <h3 className="text-[10px] font-bold uppercase text-zinc-400 tracking-tight">Recent Creations</h3>
+                      <div className="h-[1px] flex-1 mx-4 bg-zinc-100" />
                     </div>
-                  ) : (
-                    savedBarcodes
-                      .filter(bc => {
-                        if (!searchQuery) return true;
-                        const q = searchQuery.toLowerCase();
-                        const dateStr = new Date(bc.timestamp).toLocaleString().toLowerCase();
-                        return (
-                          bc.name.toLowerCase().includes(q) ||
-                          bc.text.toLowerCase().includes(q) ||
-                          bc.type.toLowerCase().includes(q) ||
-                          dateStr.includes(q)
-                        );
-                      })
-                      .map((bc) => (
-                        <motion.div
-                        layout
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        key={bc.id}
-                        onClick={() => !isDraggingScroll && loadBarcode(bc)}
-                        className="flex-shrink-0 w-32 h-32 bg-zinc-50 border border-zinc-200 rounded-xl p-3 cursor-pointer hover:border-zinc-900 hover:bg-white transition-all group relative shadow-sm"
+                    <div 
+                      ref={scrollRef}
+                      onMouseDown={handleMouseDown}
+                      onMouseLeave={handleMouseUp}
+                      onMouseUp={handleMouseUp}
+                      onMouseMove={handleMouseMove}
+                      className={cn(
+                        "w-full overflow-x-auto overflow-y-hidden select-none scrollbar-none pb-2",
+                        isDraggingScroll ? "cursor-grabbing" : "cursor-grab"
+                      )}
+                    >
+                      <div className="flex gap-4 min-w-full">
+                        {savedBarcodes.length === 0 ? (
+                          <div className="flex-1 flex flex-col items-center justify-center text-zinc-300 py-8 min-w-[200px] bg-zinc-50/50 rounded-xl border border-dashed border-zinc-200">
+                            <Save className="w-6 h-6 mb-2 opacity-20" />
+                            <p className="text-[10px] font-medium">No saved barcodes yet</p>
+                          </div>
+                        ) : (
+                          savedBarcodes.slice(0, 10).map((bc) => (
+                            <motion.div
+                              layout
+                              initial={{ opacity: 0, scale: 0.8 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              key={`recent-${bc.id}`}
+                              onClick={() => !isDraggingScroll && loadBarcode(bc)}
+                              className="flex-shrink-0 w-28 h-28 bg-zinc-50 border border-zinc-200 rounded-xl p-2.5 cursor-pointer hover:border-zinc-900 hover:bg-white transition-all group relative shadow-sm"
+                            >
+                              <div className="h-full flex flex-col justify-between pointer-events-none">
+                                <div className="space-y-0.5">
+                                  <p className="text-[9px] font-bold text-zinc-900 truncate">{bc.name}</p>
+                                  <p className="text-[7px] text-zinc-500 truncate">{bc.text}</p>
+                                </div>
+                                <div className="flex-1 flex items-center justify-center overflow-hidden py-1">
+                                  <BarcodeCanvas 
+                                    data={generateBarcodeData(bc.text, bc.type)}
+                                    silhouette={bc.silhouette}
+                                    distortion={bc.distortion}
+                                    safeZone={bc.safeZone}
+                                    horizontalOffset={bc.horizontalOffset}
+                                    barWidthScale={bc.barWidthScale}
+                                    logoSmoothing={bc.logoSmoothing}
+                                    logoDetail={bc.logoDetail}
+                                    barcodeHeight={bc.barcodeHeight}
+                                    color={bc.color}
+                                    backgroundColor={bc.bgColor}
+                                    showSafeZone={false}
+                                    isMini={true}
+                                  />
+                                </div>
+                                <div className="text-[7px] text-zinc-400 text-right">
+                                  {new Date(bc.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                              </div>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteSavedBarcode(e, bc.id);
+                                }}
+                                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-rose-600 pointer-events-auto"
+                              >
+                                <Trash2 className="w-2.5 h-2.5" />
+                              </button>
+                            </motion.div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* All Barcodes (Horizontal Grid) */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between px-1">
+                      <h3 className="text-[10px] font-bold uppercase text-zinc-400 tracking-tight">All Saved Barcodes</h3>
+                      <div className="h-[1px] flex-1 mx-4 bg-zinc-100" />
+                    </div>
+                    
+                    {savedBarcodes.length > 0 && (
+                      <div 
+                        ref={gridScrollRef}
+                        onMouseDown={handleGridMouseDown}
+                        onMouseLeave={handleGridMouseUp}
+                        onMouseUp={handleGridMouseUp}
+                        onMouseMove={handleGridMouseMove}
+                        className={cn(
+                          "w-full overflow-x-auto overflow-y-hidden select-none scrollbar-none pb-4",
+                          isDraggingGrid ? "cursor-grabbing" : "cursor-grab"
+                        )}
                       >
-                        <div className="h-full flex flex-col justify-between pointer-events-none">
-                          <div className="space-y-1">
-                            <p className="text-[10px] font-bold text-zinc-900 truncate">{bc.name}</p>
-                            <p className="text-[8px] text-zinc-500 truncate">{bc.text}</p>
-                            <p className="text-[8px] text-zinc-400 uppercase font-bold tracking-tighter">{bc.type}</p>
-                          </div>
-                          <div className="flex-1 flex items-center justify-center overflow-hidden">
-                            <BarcodeCanvas 
-                              data={generateBarcodeData(bc.text, bc.type)}
-                              silhouette={bc.silhouette}
-                              distortion={bc.distortion}
-                              safeZone={bc.safeZone}
-                              horizontalOffset={bc.horizontalOffset}
-                              barWidthScale={bc.barWidthScale}
-                              logoSmoothing={bc.logoSmoothing}
-                              logoDetail={bc.logoDetail}
-                              barcodeHeight={bc.barcodeHeight}
-                              color={bc.color}
-                              backgroundColor={bc.bgColor}
-                              showSafeZone={false}
-                              isMini={true}
-                            />
-                          </div>
-                          <div className="text-[8px] text-zinc-400 text-right">
-                            {new Date(bc.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </div>
+                        <div className="grid grid-rows-2 grid-flow-col gap-4 min-w-full">
+                          {savedBarcodes
+                            .filter(bc => {
+                              if (!searchQuery) return true;
+                              const q = searchQuery.toLowerCase();
+                              const dateStr = new Date(bc.timestamp).toLocaleString().toLowerCase();
+                              return (
+                                bc.name.toLowerCase().includes(q) ||
+                                bc.text.toLowerCase().includes(q) ||
+                                bc.type.toLowerCase().includes(q) ||
+                                dateStr.includes(q)
+                              );
+                            })
+                            .map((bc) => (
+                              <motion.div
+                                layout
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                key={`grid-${bc.id}`}
+                                onClick={() => !isDraggingGrid && loadBarcode(bc)}
+                                className="flex-shrink-0 w-32 h-32 bg-zinc-50 border border-zinc-200 rounded-xl p-3 cursor-pointer hover:border-zinc-900 hover:bg-white transition-all group relative shadow-sm flex flex-col"
+                              >
+                                <div className="flex-1 flex flex-col justify-between pointer-events-none">
+                                  <div className="space-y-1">
+                                    <p className="text-[10px] font-bold text-zinc-900 truncate">{bc.name}</p>
+                                    <div className="flex justify-between items-center">
+                                      <p className="text-[8px] text-zinc-500 truncate">{bc.text}</p>
+                                      <p className="text-[7px] text-zinc-400 font-bold">{bc.type}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex-1 flex items-center justify-center overflow-hidden py-2">
+                                    <BarcodeCanvas 
+                                      data={generateBarcodeData(bc.text, bc.type)}
+                                      silhouette={bc.silhouette}
+                                      distortion={bc.distortion}
+                                      safeZone={bc.safeZone}
+                                      horizontalOffset={bc.horizontalOffset}
+                                      barWidthScale={bc.barWidthScale}
+                                      logoSmoothing={bc.logoSmoothing}
+                                      logoDetail={bc.logoDetail}
+                                      barcodeHeight={bc.barcodeHeight}
+                                      color={bc.color}
+                                      backgroundColor={bc.bgColor}
+                                      showSafeZone={false}
+                                      isMini={true}
+                                    />
+                                  </div>
+                                  <div className="flex justify-between items-center mt-1">
+                                    <span className="text-[7px] text-zinc-400">
+                                      {new Date(bc.timestamp).toLocaleDateString()}
+                                    </span>
+                                    <span className="text-[7px] text-zinc-400">
+                                      {new Date(bc.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteSavedBarcode(e, bc.id);
+                                  }}
+                                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-rose-600 pointer-events-auto"
+                                >
+                                  <Trash2 className="w-2.5 h-2.5" />
+                                </button>
+                              </motion.div>
+                            ))}
                         </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteSavedBarcode(e, bc.id);
-                          }}
-                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-rose-600 pointer-events-auto"
-                        >
-                          <Trash2 className="w-2.5 h-2.5" />
-                        </button>
-                      </motion.div>
-                    ))
-                  )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              </ScrollArea>
             </div>
           </section>
 
