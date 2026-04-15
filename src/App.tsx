@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { BarcodeCanvas } from './components/BarcodeCanvas';
 import { generateBarcodeData, BarcodeData, BarcodeType, calculateScannability } from './lib/barcode-utils';
 import { processImage, ImageProcessingResult } from './lib/image-utils';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
@@ -39,11 +39,17 @@ import {
   Search,
   Type,
   GripVertical,
-  LayoutGrid
+  LayoutGrid,
+  FolderPlus,
+  Folder,
+  ChevronRight,
+  MoreVertical
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { toPng, toSvg } from 'html-to-image';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 
 import { PRESET_SHAPES } from './lib/presets';
 
@@ -201,6 +207,13 @@ interface SavedBarcode {
   silhouetteFont?: string;
   silhouetteFontSize?: number;
   timestamp: number;
+  folderId?: string | null;
+}
+
+interface Folder {
+  id: string;
+  name: string;
+  timestamp: number;
 }
 
 interface CustomSilhouette {
@@ -230,9 +243,20 @@ export default function App() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [customSilhouettes, setCustomSilhouettes] = useState<CustomSilhouette[]>([]);
   const [savedBarcodes, setSavedBarcodes] = useState<SavedBarcode[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const [isRearrangingLibrary, setIsRearrangingLibrary] = useState(false);
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [editingBarcodeId, setEditingBarcodeId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
   const [canvasSize, setCanvasSize] = useState(600);
   const [isResizing, setIsResizing] = useState(false);
+  const [selectedBarcodes, setSelectedBarcodes] = useState<Set<string>>(new Set());
   const resizeRef = useRef<HTMLDivElement>(null);
+  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+  const isLongPressActive = useRef(false);
 
   // Transformation Reordering State
   const [isRearranging, setIsRearranging] = useState(false);
@@ -655,6 +679,68 @@ export default function App() {
     setBarcodeName('My Barcode');
   };
 
+  const finalizeFolderCreation = () => {
+    if (newFolderName.trim()) {
+      const newFolder: Folder = {
+        id: Math.random().toString(36).substr(2, 9),
+        name: newFolderName.trim(),
+        timestamp: Date.now()
+      };
+      setFolders(prev => [newFolder, ...prev]);
+      toast.success(`Folder "${newFolderName}" created`);
+      setNewFolderName('');
+      setIsCreatingFolder(false);
+    }
+  };
+
+  const startEditingFolder = (folder: Folder) => {
+    setEditingFolderId(folder.id);
+    setEditName(folder.name);
+  };
+
+  const finalizeFolderRename = () => {
+    if (editingFolderId && editName.trim()) {
+      setFolders(prev => prev.map(f => f.id === editingFolderId ? { ...f, name: editName.trim() } : f));
+      toast.success('Folder renamed');
+      setEditingFolderId(null);
+      setEditName('');
+    }
+  };
+
+  const startEditingBarcode = (bc: SavedBarcode) => {
+    setEditingBarcodeId(bc.id);
+    setEditName(bc.name);
+  };
+
+  const finalizeBarcodeRename = () => {
+    if (editingBarcodeId && editName.trim()) {
+      setSavedBarcodes(prev => prev.map(bc => bc.id === editingBarcodeId ? { ...bc, name: editName.trim() } : bc));
+      toast.success('Barcode renamed');
+      setEditingBarcodeId(null);
+      setEditName('');
+    }
+  };
+
+  const deleteFolder = (id: string) => {
+    setFolders(prev => prev.filter(f => f.id !== id));
+    setSavedBarcodes(prev => prev.map(bc => bc.folderId === id ? { ...bc, folderId: null } : bc));
+    if (activeFolderId === id) setActiveFolderId(null);
+    toast.success('Folder deleted');
+  };
+
+  const moveBarcodeToFolder = (barcodeId: string, folderId: string | null) => {
+    setSavedBarcodes(prev => prev.map(bc => bc.id === barcodeId ? { ...bc, folderId } : bc));
+    toast.success(folderId ? 'Moved to folder' : 'Moved to main library');
+  };
+
+  const handleFolderDrop = (e: React.DragEvent, folderId: string | null) => {
+    e.preventDefault();
+    const barcodeId = e.dataTransfer.getData('barcodeId');
+    if (barcodeId) {
+      moveBarcodeToFolder(barcodeId, folderId);
+    }
+  };
+
   const loadBarcode = (bc: SavedBarcode) => {
     setBarcodeName(bc.name);
     setInputText(bc.text);
@@ -676,6 +762,11 @@ export default function App() {
     setSilhouetteFont(bc.silhouetteFont || FONTS[0].value);
     setSilhouetteFontSize(bc.silhouetteFontSize || 100);
     toast.success(`"${bc.name}" configuration loaded`);
+    
+    // Scroll back to top (Barcode Canvas) on mobile/tablet
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Keep user in library if they are already there, or switch to edit if they want to see the change
+    // User requested: "let's keep the user in the library so they can select another barcode if needed"
   };
 
   const deleteSavedBarcode = (e: React.MouseEvent, id: string) => {
@@ -783,6 +874,10 @@ export default function App() {
   };
 
   const exportAsPng = async () => {
+    if (selectedBarcodes.size > 0) {
+      await bulkExport('png');
+      return;
+    }
     const element = document.getElementById('barcode-svg');
     if (!element) return;
     try {
@@ -799,6 +894,10 @@ export default function App() {
   };
 
   const exportAsSvg = async () => {
+    if (selectedBarcodes.size > 0) {
+      await bulkExport('svg');
+      return;
+    }
     const element = document.getElementById('barcode-svg');
     if (!element) return;
     try {
@@ -811,6 +910,83 @@ export default function App() {
       toast.success('Exported as SVG');
     } catch (err) {
       toast.error('Export failed');
+    }
+  };
+
+  const bulkExport = async (format: 'png' | 'svg') => {
+    const barcodesToExport = savedBarcodes.filter(bc => selectedBarcodes.has(bc.id));
+    if (barcodesToExport.length === 0) return;
+
+    const zip = new JSZip();
+    const toastId = toast.loading(`Preparing ${barcodesToExport.length} barcodes...`);
+
+    try {
+      for (const bc of barcodesToExport) {
+        // Find the mini canvas element in the library
+        const miniElement = document.querySelector(`[data-barcode-id="${bc.id}"] #barcode-svg`);
+        if (miniElement) {
+          if (format === 'png') {
+            const dataUrl = await toPng(miniElement as HTMLElement, { backgroundColor: bc.bgColor });
+            const base64Data = dataUrl.split(',')[1];
+            zip.file(`${bc.name.replace(/[/\\?%*:|"<>]/g, '-')}-${bc.id}.png`, base64Data, { base64: true });
+          } else {
+            const dataUrl = await toSvg(miniElement as HTMLElement);
+            // SVG data URL is usually data:image/svg+xml;charset=utf-8,<svg...
+            const svgContent = decodeURIComponent(dataUrl.split(',')[1]);
+            zip.file(`${bc.name.replace(/[/\\?%*:|"<>]/g, '-')}-${bc.id}.svg`, svgContent);
+          }
+        }
+      }
+
+      const content = await zip.generateAsync({ type: 'blob' });
+      saveAs(content, `barcodes-bulk-${Date.now()}.zip`);
+      
+      toast.dismiss(toastId);
+      toast.success(`Bulk export of ${barcodesToExport.length} items complete!`);
+      setSelectedBarcodes(new Set());
+      confetti();
+    } catch (err) {
+      toast.dismiss(toastId);
+      toast.error('Bulk export failed');
+      console.error(err);
+    }
+  };
+
+  const bulkDelete = () => {
+    if (selectedBarcodes.size === 0) return;
+    
+    const count = selectedBarcodes.size;
+    const confirmDelete = window.confirm(`Are you sure you want to delete ${count} saved barcodes? This action cannot be undone.`);
+    
+    if (confirmDelete) {
+      setSavedBarcodes(prev => prev.filter(bc => !selectedBarcodes.has(bc.id)));
+      setSelectedBarcodes(new Set());
+      toast.success(`Deleted ${count} items from library`);
+    }
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedBarcodes(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleLongPressStart = (id: string) => {
+    isLongPressActive.current = false;
+    longPressTimer.current = setTimeout(() => {
+      isLongPressActive.current = true;
+      toggleSelection(id);
+      toast.info('Item selected for bulk export');
+    }, 500);
+  };
+
+  const handleLongPressEnd = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
     }
   };
 
@@ -996,16 +1172,53 @@ export default function App() {
           </a>
           
           <div className="flex items-center gap-1 sm:gap-2">
-            <Button variant="outline" size="sm" onClick={exportAsSvg} className="h-8 px-2 sm:px-3 gap-1 sm:gap-2 text-[10px] sm:text-xs">
+            {selectedBarcodes.size > 0 && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={bulkDelete}
+                className="h-8 px-2 sm:px-3 gap-1 sm:gap-2 text-rose-500 border-rose-100 hover:bg-rose-50 hover:text-rose-600 transition-all"
+              >
+                <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden xs:inline">Delete ({selectedBarcodes.size})</span>
+                <span className="xs:hidden">({selectedBarcodes.size})</span>
+              </Button>
+            )}
+            <Button 
+              variant={selectedBarcodes.size > 0 ? "default" : "outline"} 
+              size="sm" 
+              onClick={exportAsSvg} 
+              className={cn(
+                "h-8 px-2 sm:px-3 gap-1 sm:gap-2 text-[10px] sm:text-xs transition-all",
+                selectedBarcodes.size > 0 && "bg-zinc-900 text-white ring-2 ring-zinc-900/20"
+              )}
+            >
               <Download className="w-3 h-3 sm:w-4 sm:h-4" />
-              <span className="hidden xs:inline">SVG</span>
-              <span className="xs:hidden">SVG</span>
+              <span className="hidden xs:inline">{selectedBarcodes.size > 0 ? `SVG (${selectedBarcodes.size})` : 'SVG'}</span>
+              <span className="xs:hidden">{selectedBarcodes.size > 0 ? `(${selectedBarcodes.size})` : 'SVG'}</span>
             </Button>
-            <Button size="sm" onClick={exportAsPng} className="h-8 px-2 sm:px-3 gap-1 sm:gap-2 bg-zinc-900 hover:bg-zinc-800 text-[10px] sm:text-xs">
+            <Button 
+              size="sm" 
+              onClick={exportAsPng} 
+              className={cn(
+                "h-8 px-2 sm:px-3 gap-1 sm:gap-2 bg-zinc-900 hover:bg-zinc-800 text-[10px] sm:text-xs transition-all",
+                selectedBarcodes.size > 0 && "ring-2 ring-zinc-900/20"
+              )}
+            >
               <Download className="w-3 h-3 sm:w-4 sm:h-4" />
-              <span className="hidden xs:inline">PNG</span>
-              <span className="xs:hidden">PNG</span>
+              <span className="hidden xs:inline">{selectedBarcodes.size > 0 ? `PNG (${selectedBarcodes.size})` : 'PNG'}</span>
+              <span className="xs:hidden">{selectedBarcodes.size > 0 ? `(${selectedBarcodes.size})` : 'PNG'}</span>
             </Button>
+            {selectedBarcodes.size > 0 && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setSelectedBarcodes(new Set())}
+                className="h-8 w-8 p-0 text-zinc-400 hover:text-zinc-900"
+              >
+                <XCircle className="w-4 h-4" />
+              </Button>
+            )}
           </div>
         </header>
 
@@ -1409,38 +1622,6 @@ export default function App() {
               </AnimatePresence>
             </div>
 
-            {/* Save Section */}
-            <div className="z-20 w-full max-w-md mb-4 px-6">
-              <Card className="bg-white border-zinc-200 shadow-sm rounded-xl overflow-hidden">
-                <div className="px-3 py-1.5 space-y-2">
-                  <div className="space-y-1">
-                    <Label htmlFor="save-name" className="text-[10px] uppercase text-zinc-400 font-bold tracking-tight">Barcode Name</Label>
-                    <div className="flex gap-2">
-                      <Input 
-                        id="save-name"
-                        value={barcodeName}
-                        onChange={(e) => setBarcodeName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            saveCurrentBarcode();
-                          }
-                        }}
-                        placeholder="e.g., Summer Collection 2024"
-                        className="h-8 text-xs bg-zinc-50 border-zinc-200 focus-visible:ring-zinc-900"
-                      />
-                      <Button 
-                        onClick={saveCurrentBarcode}
-                        className="h-8 bg-zinc-900 text-white hover:bg-zinc-800 rounded-lg px-4 transition-all active:scale-95 font-bold text-xs gap-2"
-                      >
-                        <Save className="w-3 h-3" />
-                        Save
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            </div>
-
             {/* Mobile Tab Switcher */}
             <div className="lg:hidden w-full px-6 pb-4">
               <div className="bg-zinc-200/50 p-1 rounded-xl flex gap-1">
@@ -1477,20 +1658,20 @@ export default function App() {
                   <History className="w-3.5 h-3.5 text-zinc-400" />
                   <span className="text-[9px] font-bold uppercase text-zinc-500 tracking-widest">History & Library</span>
                 </div>
-                <div className="flex items-center gap-3">
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className={cn("h-6 w-6 text-zinc-400 hover:text-zinc-900", isSearchOpen && "text-zinc-900 bg-zinc-100")}
-                    onClick={() => {
-                      setIsSearchOpen(!isSearchOpen);
-                      if (isSearchOpen) setSearchQuery('');
-                    }}
-                  >
-                    <Search className="w-3 h-3" />
-                  </Button>
-                  <span className="text-[9px] font-bold text-zinc-400 bg-zinc-100 px-2 py-0.5 rounded-full">{savedBarcodes.length}</span>
-                </div>
+                  <div className="flex items-center gap-3">
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className={cn("h-6 w-6 text-zinc-400 hover:text-zinc-900", isSearchOpen && "text-zinc-900 bg-zinc-100")}
+                      onClick={() => {
+                        setIsSearchOpen(!isSearchOpen);
+                        if (isSearchOpen) setSearchQuery('');
+                      }}
+                    >
+                      <Search className="w-3 h-3" />
+                    </Button>
+                    <span className="text-[9px] font-bold text-zinc-400 bg-zinc-100 px-2 py-0.5 rounded-full">{savedBarcodes.length}</span>
+                  </div>
               </div>
 
               <AnimatePresence>
@@ -1517,6 +1698,46 @@ export default function App() {
               
               <ScrollArea className="flex-1">
                 <div className="p-6 space-y-8">
+                  {/* Save Section (Moved here for more space) */}
+                  <section className="space-y-4">
+                    <div className="flex items-center gap-2 text-zinc-500">
+                      <Save className="w-3.5 h-3.5" />
+                      <h2 className="text-[10px] font-bold uppercase tracking-wider">Save to Library</h2>
+                    </div>
+                    <Card className="bg-zinc-50/50 border-zinc-100 shadow-none rounded-xl overflow-hidden">
+                      <div className="p-4 space-y-3">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="save-name" className="text-[10px] uppercase text-zinc-400 font-bold tracking-tight">Barcode Name</Label>
+                          <div className="flex gap-2">
+                            <Input 
+                              id="save-name"
+                              value={barcodeName}
+                              onChange={(e) => setBarcodeName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  saveCurrentBarcode();
+                                }
+                              }}
+                              placeholder="e.g., Summer Collection 2024"
+                              className="h-9 text-xs bg-white border-zinc-200 focus-visible:ring-zinc-900"
+                            />
+                            <Button 
+                              onClick={saveCurrentBarcode}
+                              className="h-9 bg-zinc-900 text-white hover:bg-zinc-800 rounded-lg px-4 transition-all active:scale-95 font-bold text-xs gap-2 shrink-0"
+                            >
+                              <Save className="w-3.5 h-3.5" />
+                              Save
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  </section>
+
+                  {/* Folders Section (Removed from here, moved to All Saved Barcodes) */}
+
+                  <Separator className="bg-zinc-50" />
+
                   {/* Recent Strip (Horizontal) */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between px-1">
@@ -1547,9 +1768,37 @@ export default function App() {
                               initial={{ opacity: 0, scale: 0.8 }}
                               animate={{ opacity: 1, scale: 1 }}
                               key={`recent-${bc.id}`}
-                              onClick={() => !isDraggingScroll && loadBarcode(bc)}
-                              className="flex-shrink-0 w-28 h-28 bg-zinc-50 border border-zinc-200 rounded-xl p-2.5 cursor-pointer hover:border-zinc-900 hover:bg-white transition-all group relative shadow-sm"
+                              onClick={() => {
+                                if (isLongPressActive.current) {
+                                  isLongPressActive.current = false;
+                                  return;
+                                }
+                                if (selectedBarcodes.size > 0) {
+                                  toggleSelection(bc.id);
+                                } else if (!isDraggingScroll) {
+                                  loadBarcode(bc);
+                                }
+                              }}
+                              onMouseDown={() => handleLongPressStart(bc.id)}
+                              onMouseUp={handleLongPressEnd}
+                              onMouseLeave={handleLongPressEnd}
+                              onTouchStart={() => handleLongPressStart(bc.id)}
+                              onTouchEnd={handleLongPressEnd}
+                              className={cn(
+                                "flex-shrink-0 w-28 h-28 border rounded-xl p-2.5 cursor-pointer transition-all group relative shadow-sm",
+                                selectedBarcodes.has(bc.id) 
+                                  ? "border-zinc-900 ring-2 ring-zinc-900/20 bg-zinc-900/5" 
+                                  : "bg-zinc-50 border-zinc-200 hover:border-zinc-900 hover:bg-white"
+                              )}
+                              data-barcode-id={bc.id}
                             >
+                              {selectedBarcodes.has(bc.id) && (
+                                <div className="absolute top-1 right-1 z-30">
+                                  <div className="bg-zinc-900 text-white rounded-full p-0.5 shadow-sm">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                  </div>
+                                </div>
+                              )}
                               <div className="h-full flex flex-col justify-between pointer-events-none">
                                 <div className="space-y-0.5">
                                   <p className="text-[9px] font-bold text-zinc-900 truncate">{bc.name}</p>
@@ -1595,8 +1844,146 @@ export default function App() {
                   {/* All Barcodes (Horizontal Grid) */}
                   <div className="space-y-4">
                     <div className="flex items-center justify-between px-1">
-                      <h3 className="text-[10px] font-bold uppercase text-zinc-400 tracking-tight">All Saved Barcodes</h3>
-                      <div className="h-[1px] flex-1 mx-4 bg-zinc-100" />
+                      <div className="flex items-center gap-3">
+                        <h3 className="text-[10px] font-bold uppercase text-zinc-400 tracking-tight">All Saved Barcodes</h3>
+                        <div className="flex items-center gap-1.5">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className={cn(
+                              "h-6 w-6 transition-all",
+                              isRearrangingLibrary 
+                                ? "text-zinc-900 bg-zinc-100 ring-1 ring-zinc-200" 
+                                : "text-zinc-400 hover:text-zinc-900 hover:bg-zinc-50"
+                            )}
+                            onClick={() => setIsRearrangingLibrary(!isRearrangingLibrary)}
+                            title="Rearrange Library"
+                          >
+                            <LayoutGrid className="w-3 h-3" />
+                          </Button>
+                          <AnimatePresence>
+                            {isRearrangingLibrary && (
+                              <motion.div
+                                initial={{ opacity: 0, x: -10, scale: 0.8 }}
+                                animate={{ opacity: 1, x: 0, scale: 1 }}
+                                exit={{ opacity: 0, x: -10, scale: 0.8 }}
+                              >
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className={cn(
+                                    "h-6 w-6 transition-all",
+                                    isCreatingFolder ? "text-zinc-900 bg-zinc-100 ring-1 ring-zinc-200" : "text-zinc-400 hover:text-zinc-900 hover:bg-zinc-50"
+                                  )}
+                                  onClick={() => setIsCreatingFolder(!isCreatingFolder)}
+                                  title="Create Folder"
+                                >
+                                  <FolderPlus className="w-3 h-3" />
+                                </Button>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      </div>
+                      <div className="h-[1px] flex-1 ml-4 bg-zinc-100" />
+                    </div>
+
+                    {/* Folder Drop Targets & Navigation */}
+                    <div className="space-y-3 pb-2 pt-4">
+                      <AnimatePresence>
+                        {isCreatingFolder && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="flex gap-2 px-1"
+                          >
+                            <Input 
+                              value={newFolderName}
+                              onChange={(e) => setNewFolderName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') finalizeFolderCreation();
+                                if (e.key === 'Escape') setIsCreatingFolder(false);
+                              }}
+                              placeholder="Folder name..."
+                              className="h-8 text-[10px] bg-white border-zinc-200 focus-visible:ring-zinc-900"
+                              autoFocus
+                            />
+                            <Button 
+                              size="sm" 
+                              className="h-8 px-3 bg-zinc-900 text-white text-[10px] font-bold"
+                              onClick={finalizeFolderCreation}
+                            >
+                              Create
+                            </Button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      <div className="flex gap-3 overflow-x-auto scrollbar-none px-1 py-6 overflow-visible">
+                        <div
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                          }}
+                          onDrop={(e) => handleFolderDrop(e, null)}
+                          onClick={() => setActiveFolderId(null)}
+                          className={cn(
+                            "flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-all cursor-pointer",
+                            activeFolderId === null 
+                              ? "bg-zinc-900 border-zinc-900 text-white" 
+                              : "bg-zinc-50 border-zinc-200 border-dashed text-zinc-400 hover:border-zinc-400 hover:bg-white"
+                          )}
+                        >
+                          <History className="w-3.5 h-3.5" />
+                          <span className="text-[10px] font-bold whitespace-nowrap">Main Library</span>
+                        </div>
+                        {folders.map(folder => (
+                          <div
+                            key={folder.id}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = 'move';
+                            }}
+                            onDrop={(e) => handleFolderDrop(e, folder.id)}
+                            onClick={() => setActiveFolderId(folder.id)}
+                            onDoubleClick={() => startEditingFolder(folder)}
+                            className={cn(
+                              "flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-all cursor-pointer group relative",
+                              activeFolderId === folder.id 
+                                ? "bg-zinc-900 border-zinc-900 text-white" 
+                                : "bg-zinc-50 border-zinc-200 border-dashed text-zinc-400 hover:border-zinc-400 hover:bg-white"
+                            )}
+                          >
+                            <Folder className="w-3.5 h-3.5" />
+                            {editingFolderId === folder.id ? (
+                              <Input
+                                value={editName}
+                                onChange={(e) => setEditName(e.target.value)}
+                                onBlur={finalizeFolderRename}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') finalizeFolderRename();
+                                  if (e.key === 'Escape') setEditingFolderId(null);
+                                }}
+                                className="h-5 w-24 text-[10px] p-1 bg-white text-zinc-900"
+                                autoFocus
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            ) : (
+                              <span className="text-[10px] font-bold whitespace-nowrap">{folder.name}</span>
+                            )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteFolder(folder.id);
+                              }}
+                              className="absolute -top-3 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-20"
+                            >
+                              <XCircle className="w-2.5 h-2.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                     
                     {savedBarcodes.length > 0 && (
@@ -1611,74 +1998,213 @@ export default function App() {
                           isDraggingGrid ? "cursor-grabbing" : "cursor-grab"
                         )}
                       >
-                        <div className="grid grid-rows-2 grid-flow-col gap-4 min-w-full">
-                          {savedBarcodes
-                            .filter(bc => {
-                              if (!searchQuery) return true;
-                              const q = searchQuery.toLowerCase();
-                              const dateStr = new Date(bc.timestamp).toLocaleString().toLowerCase();
-                              return (
-                                bc.name.toLowerCase().includes(q) ||
-                                bc.text.toLowerCase().includes(q) ||
-                                bc.type.toLowerCase().includes(q) ||
-                                dateStr.includes(q)
-                              );
-                            })
-                            .map((bc) => (
-                              <motion.div
-                                layout
-                                initial={{ opacity: 0, scale: 0.8 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                key={`grid-${bc.id}`}
-                                onClick={() => !isDraggingGrid && loadBarcode(bc)}
-                                className="flex-shrink-0 w-32 h-32 bg-zinc-50 border border-zinc-200 rounded-xl p-3 cursor-pointer hover:border-zinc-900 hover:bg-white transition-all group relative shadow-sm flex flex-col"
-                              >
-                                <div className="flex-1 flex flex-col justify-between pointer-events-none">
-                                  <div className="space-y-1">
-                                    <p className="text-[10px] font-bold text-zinc-900 truncate">{bc.name}</p>
-                                    <div className="flex justify-between items-center">
-                                      <p className="text-[8px] text-zinc-500 truncate">{bc.text}</p>
-                                      <p className="text-[7px] text-zinc-400 font-bold">{bc.type}</p>
+                        {isRearrangingLibrary ? (
+                          <Reorder.Group 
+                            axis="x" 
+                            values={savedBarcodes} 
+                            onReorder={setSavedBarcodes}
+                            className="flex gap-4 min-w-full py-2"
+                          >
+                            {savedBarcodes
+                              .filter(bc => {
+                                if (activeFolderId && bc.folderId !== activeFolderId) return false;
+                                if (!activeFolderId && bc.folderId) return false; // Only show root items
+                                if (!searchQuery) return true;
+                                const q = searchQuery.toLowerCase();
+                                return bc.name.toLowerCase().includes(q) || bc.text.toLowerCase().includes(q);
+                              })
+                              .map((bc) => (
+                                <Reorder.Item
+                                  key={bc.id}
+                                  value={bc}
+                                  dragListener={true}
+                                  onDragStart={(e) => {
+                                    // Set data for native drop targets (folders)
+                                    if (e && 'dataTransfer' in e) {
+                                      (e as any).dataTransfer.setData('barcodeId', bc.id);
+                                      (e as any).dataTransfer.effectAllowed = 'move';
+                                    }
+                                  }}
+                                  className="flex-shrink-0 w-32 h-32 bg-white border-2 border-zinc-900 rounded-xl p-3 shadow-lg cursor-move flex flex-col relative"
+                                >
+                                  <div 
+                                    className="absolute inset-0 z-0" 
+                                    onDoubleClick={() => startEditingBarcode(bc)}
+                                  />
+                                  <div className="absolute top-1 left-1 z-10">
+                                    <GripVertical className="w-3 h-3 text-zinc-400" />
+                                  </div>
+                                  <div className="flex-1 flex flex-col justify-between pointer-events-none mt-2 z-10">
+                                    {editingBarcodeId === bc.id ? (
+                                      <div className="pointer-events-auto">
+                                        <Input
+                                          value={editName}
+                                          onChange={(e) => setEditName(e.target.value)}
+                                          onBlur={finalizeBarcodeRename}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') finalizeBarcodeRename();
+                                            if (e.key === 'Escape') setEditingBarcodeId(null);
+                                          }}
+                                          className="h-5 text-[10px] p-1 bg-white text-zinc-900"
+                                          autoFocus
+                                          onClick={(e) => e.stopPropagation()}
+                                        />
+                                      </div>
+                                    ) : (
+                                      <p className="text-[10px] font-bold text-zinc-900 truncate">{bc.name}</p>
+                                    )}
+                                    <div className="flex-1 flex items-center justify-center overflow-hidden py-1">
+                                      <BarcodeCanvas 
+                                        data={generateBarcodeData(bc.text, bc.type)}
+                                        silhouette={bc.silhouette}
+                                        distortion={bc.distortion}
+                                        safeZone={bc.safeZone}
+                                        horizontalOffset={bc.horizontalOffset}
+                                        barWidthScale={bc.barWidthScale}
+                                        logoSmoothing={bc.logoSmoothing}
+                                        logoDetail={bc.logoDetail}
+                                        barcodeHeight={bc.barcodeHeight}
+                                        color={bc.color}
+                                        backgroundColor={bc.bgColor}
+                                        showSafeZone={false}
+                                        isMini={true}
+                                      />
                                     </div>
                                   </div>
-                                  <div className="flex-1 flex items-center justify-center overflow-hidden py-2">
-                                    <BarcodeCanvas 
-                                      data={generateBarcodeData(bc.text, bc.type)}
-                                      silhouette={bc.silhouette}
-                                      distortion={bc.distortion}
-                                      safeZone={bc.safeZone}
-                                      horizontalOffset={bc.horizontalOffset}
-                                      barWidthScale={bc.barWidthScale}
-                                      logoSmoothing={bc.logoSmoothing}
-                                      logoDetail={bc.logoDetail}
-                                      barcodeHeight={bc.barcodeHeight}
-                                      color={bc.color}
-                                      backgroundColor={bc.bgColor}
-                                      showSafeZone={false}
-                                      isMini={true}
-                                    />
-                                  </div>
-                                  <div className="flex justify-between items-center mt-1">
-                                    <span className="text-[7px] text-zinc-400">
-                                      {new Date(bc.timestamp).toLocaleDateString()}
-                                    </span>
-                                    <span className="text-[7px] text-zinc-400">
-                                      {new Date(bc.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </span>
-                                  </div>
-                                </div>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    deleteSavedBarcode(e, bc.id);
+                                </Reorder.Item>
+                              ))}
+                          </Reorder.Group>
+                        ) : (
+                          <div className="grid grid-rows-2 grid-flow-col gap-x-4 gap-y-8 min-w-full py-2">
+                            {savedBarcodes
+                              .filter(bc => {
+                                if (activeFolderId && bc.folderId !== activeFolderId) return false;
+                                if (!activeFolderId && bc.folderId && !searchQuery) return false; // Only show root items unless searching
+                                if (!searchQuery) return true;
+                                const q = searchQuery.toLowerCase();
+                                const dateStr = new Date(bc.timestamp).toLocaleString().toLowerCase();
+                                return (
+                                  bc.name.toLowerCase().includes(q) ||
+                                  bc.text.toLowerCase().includes(q) ||
+                                  bc.type.toLowerCase().includes(q) ||
+                                  dateStr.includes(q)
+                                );
+                              })
+                              .map((bc) => (
+                                <motion.div
+                                  layout
+                                  initial={{ opacity: 0, scale: 0.8 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  key={`grid-${bc.id}`}
+                                  onClick={() => {
+                                    if (isLongPressActive.current) {
+                                      isLongPressActive.current = false;
+                                      return;
+                                    }
+                                    if (selectedBarcodes.size > 0) {
+                                      toggleSelection(bc.id);
+                                    } else if (!isDraggingGrid) {
+                                      loadBarcode(bc);
+                                    }
                                   }}
-                                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-rose-600 pointer-events-auto"
+                                  onMouseDown={() => handleLongPressStart(bc.id)}
+                                  onMouseUp={handleLongPressEnd}
+                                  onMouseLeave={handleLongPressEnd}
+                                  onTouchStart={() => handleLongPressStart(bc.id)}
+                                  onTouchEnd={handleLongPressEnd}
+                                  onDoubleClick={() => startEditingBarcode(bc)}
+                                  draggable={true}
+                                  onDragStart={(e) => {
+                                    if (e.dataTransfer) {
+                                      e.dataTransfer.setData('barcodeId', bc.id);
+                                      e.dataTransfer.effectAllowed = 'move';
+                                    }
+                                  }}
+                                  className={cn(
+                                    "flex-shrink-0 w-32 h-32 border rounded-xl p-3 cursor-pointer transition-all group relative shadow-sm flex flex-col",
+                                    selectedBarcodes.has(bc.id) 
+                                      ? "border-zinc-900 ring-2 ring-zinc-900/20 bg-zinc-900/5" 
+                                      : "bg-zinc-50 border-zinc-200 hover:border-zinc-900 hover:bg-white",
+                                    isRearrangingLibrary && "cursor-move"
+                                  )}
+                                  data-barcode-id={bc.id}
                                 >
-                                  <Trash2 className="w-2.5 h-2.5" />
-                                </button>
-                              </motion.div>
-                            ))}
-                        </div>
+                                  <div 
+                                    className="absolute inset-0 z-0" 
+                                    onDoubleClick={() => startEditingBarcode(bc)}
+                                  />
+                                  {selectedBarcodes.has(bc.id) && (
+                                    <div className="absolute top-1 right-1 z-30">
+                                      <div className="bg-zinc-900 text-white rounded-full p-0.5 shadow-sm">
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  <div className="flex-1 flex flex-col justify-between pointer-events-none z-10">
+                                    <div className="space-y-1">
+                                      {editingBarcodeId === bc.id ? (
+                                        <div className="pointer-events-auto">
+                                          <Input
+                                            value={editName}
+                                            onChange={(e) => setEditName(e.target.value)}
+                                            onBlur={finalizeBarcodeRename}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') finalizeBarcodeRename();
+                                              if (e.key === 'Escape') setEditingBarcodeId(null);
+                                            }}
+                                            className="h-5 text-[10px] p-1 bg-white text-zinc-900"
+                                            autoFocus
+                                            onClick={(e) => e.stopPropagation()}
+                                          />
+                                        </div>
+                                      ) : (
+                                        <p className="text-[10px] font-bold text-zinc-900 truncate">{bc.name}</p>
+                                      )}
+                                      <div className="flex justify-between items-center">
+                                        <p className="text-[8px] text-zinc-500 truncate">{bc.text}</p>
+                                        <p className="text-[7px] text-zinc-400 font-bold">{bc.type}</p>
+                                      </div>
+                                    </div>
+                                    <div className="flex-1 flex items-center justify-center overflow-hidden py-2">
+                                      <BarcodeCanvas 
+                                        data={generateBarcodeData(bc.text, bc.type)}
+                                        silhouette={bc.silhouette}
+                                        distortion={bc.distortion}
+                                        safeZone={bc.safeZone}
+                                        horizontalOffset={bc.horizontalOffset}
+                                        barWidthScale={bc.barWidthScale}
+                                        logoSmoothing={bc.logoSmoothing}
+                                        logoDetail={bc.logoDetail}
+                                        barcodeHeight={bc.barcodeHeight}
+                                        color={bc.color}
+                                        backgroundColor={bc.bgColor}
+                                        showSafeZone={false}
+                                        isMini={true}
+                                      />
+                                    </div>
+                                    <div className="flex justify-between items-center mt-1">
+                                      <span className="text-[7px] text-zinc-400">
+                                        {new Date(bc.timestamp).toLocaleDateString()}
+                                      </span>
+                                      <span className="text-[7px] text-zinc-400">
+                                        {new Date(bc.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      deleteSavedBarcode(e, bc.id);
+                                    }}
+                                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-rose-600 pointer-events-auto"
+                                  >
+                                    <Trash2 className="w-2.5 h-2.5" />
+                                  </button>
+                                </motion.div>
+                              ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
