@@ -1096,11 +1096,11 @@ export default function App() {
       </aside>
 
           {/* Center: Canvas */}
-          <section className="flex-1 bg-[#f0f0f0] flex flex-col items-center relative overflow-hidden">
+          <section className="flex-1 bg-[#f0f0f0] flex flex-col items-center justify-start relative overflow-hidden">
             {/* Background Pattern */}
             <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 0)', backgroundSize: '24px 24px' }} />
             
-            <div className="flex-1 w-full flex items-center justify-center p-2 relative">
+            <div className="w-full flex flex-col items-center pt-8 pb-4 px-6 relative">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={`${inputText}-${barcodeType}-${silhouette}`}
@@ -1133,7 +1133,7 @@ export default function App() {
             </div>
 
             {/* Save Section */}
-            <div className="z-20 w-full max-w-md mb-2 px-6">
+            <div className="z-20 w-full max-w-md mb-4 px-6">
               <Card className="bg-white border-zinc-200 shadow-sm rounded-xl overflow-hidden">
                 <div className="px-3 py-1.5 space-y-2">
                   <div className="space-y-1">
@@ -1165,7 +1165,7 @@ export default function App() {
             </div>
 
             {/* Saved Barcodes Drawer */}
-            <div className="w-full h-64 bg-white border-t border-zinc-200 z-20 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.04)] relative pb-4">
+            <div className="w-full h-64 bg-white border-t border-zinc-200 z-20 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.04)] relative pb-4 mt-auto md:mt-0">
               <div className="px-6 py-2.5 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/30">
                 <div className="flex items-center gap-2">
                   <History className="w-3.5 h-3.5 text-zinc-400" />
