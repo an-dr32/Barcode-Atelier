@@ -236,6 +236,7 @@ export default function App() {
 
   // Transformation Reordering State
   const [isRearranging, setIsRearranging] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'edit' | 'library'>('edit');
   const [transformationOrder, setTransformationOrder] = useState([
     'distortion',
     'offset',
@@ -978,38 +979,43 @@ export default function App() {
         <Toaster position="top-center" />
         
         {/* Header */}
-        <header className="h-16 border-bottom border-zinc-200 bg-white/80 backdrop-blur-md sticky top-0 z-50 flex items-center justify-between px-6">
+        <header className="h-16 border-b border-zinc-200 bg-white/80 backdrop-blur-md sticky top-0 z-50 flex items-center justify-between px-4 sm:px-6">
           <a 
             href="https://andresdm-portfolio-site.vercel.app/" 
             target="_blank" 
             rel="noopener noreferrer"
-            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+            className="flex items-center gap-2 sm:gap-3 hover:opacity-80 transition-opacity"
           >
-            <div className="w-10 h-10 bg-zinc-900 rounded-lg flex items-center justify-center">
-              <Barcode className="text-white w-6 h-6" />
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-zinc-900 rounded-lg flex items-center justify-center shrink-0">
+              <Barcode className="text-white w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            <div>
-              <h1 className="text-lg font-bold tracking-tight">Barcode Atelier</h1>
-              <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">by Andres De Moya</p>
+            <div className="min-w-0">
+              <h1 className="text-sm sm:text-lg font-bold tracking-tight truncate">Barcode Atelier</h1>
+              <p className="hidden sm:block text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">by Andres De Moya</p>
             </div>
           </a>
           
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={exportAsSvg} className="gap-2">
-              <Download className="w-4 h-4" />
-              SVG
+          <div className="flex items-center gap-1 sm:gap-2">
+            <Button variant="outline" size="sm" onClick={exportAsSvg} className="h-8 px-2 sm:px-3 gap-1 sm:gap-2 text-[10px] sm:text-xs">
+              <Download className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="hidden xs:inline">SVG</span>
+              <span className="xs:hidden">SVG</span>
             </Button>
-            <Button size="sm" onClick={exportAsPng} className="gap-2 bg-zinc-900 hover:bg-zinc-800">
-              <Download className="w-4 h-4" />
-              PNG
+            <Button size="sm" onClick={exportAsPng} className="h-8 px-2 sm:px-3 gap-1 sm:gap-2 bg-zinc-900 hover:bg-zinc-800 text-[10px] sm:text-xs">
+              <Download className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="hidden xs:inline">PNG</span>
+              <span className="xs:hidden">PNG</span>
             </Button>
           </div>
         </header>
 
-        <main className="flex min-h-[calc(100vh-64px)]">
-          {/* Left Panel: Inputs */}
-          <aside className="w-80 border-right border-zinc-200 bg-white flex flex-col">
-            <ScrollArea className="flex-1">
+        <main className="flex flex-col lg:flex-row min-h-[calc(100vh-64px)] relative">
+          {/* Left Panel: Inputs (Desktop always, Mobile only if edit tab) */}
+          <aside className={cn(
+            "w-full lg:w-80 order-2 lg:order-1 border-b lg:border-b-0 lg:border-r border-zinc-200 bg-white flex flex-col shrink-0",
+            mobileTab !== 'edit' && "hidden lg:flex"
+          )}>
+            <ScrollArea className="flex-1 lg:h-auto h-[300px] sm:h-[400px]">
               <div className="p-6 space-y-8">
                 <section className="space-y-4">
                   <div className="flex items-center gap-2 text-zinc-500">
@@ -1334,12 +1340,12 @@ export default function App() {
         </ScrollArea>
       </aside>
 
-          {/* Center: Canvas */}
-          <section className="flex-1 bg-[#f0f0f0] flex flex-col items-center justify-start relative overflow-hidden">
+          {/* Center: Canvas (Sticky on Mobile) */}
+          <section className="order-1 lg:order-2 flex-1 bg-[#f0f0f0] flex flex-col items-center justify-start relative lg:overflow-hidden sticky top-16 lg:top-0 z-40 lg:z-0 border-b lg:border-b-0 border-zinc-200">
             {/* Background Pattern */}
             <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 0)', backgroundSize: '24px 24px' }} />
             
-            <div className="w-full flex flex-col items-center pt-8 pb-4 px-6 relative">
+            <div className="w-full flex flex-col items-center pt-4 sm:pt-8 pb-4 px-4 sm:px-6 relative">
               <AnimatePresence mode="wait">
                 <motion.div
                   ref={resizeRef}
@@ -1435,8 +1441,37 @@ export default function App() {
               </Card>
             </div>
 
-            {/* History Section */}
-            <div className="flex-1 w-full bg-white border-t border-zinc-200 z-20 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.04)] relative overflow-hidden">
+            {/* Mobile Tab Switcher */}
+            <div className="lg:hidden w-full px-6 pb-4">
+              <div className="bg-zinc-200/50 p-1 rounded-xl flex gap-1">
+                <button 
+                  onClick={() => setMobileTab('edit')}
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
+                    mobileTab === 'edit' ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+                  )}
+                >
+                  <Settings2 className="w-3.5 h-3.5" />
+                  Modification
+                </button>
+                <button 
+                  onClick={() => setMobileTab('library')}
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
+                    mobileTab === 'library' ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+                  )}
+                >
+                  <History className="w-3.5 h-3.5" />
+                  Library
+                </button>
+              </div>
+            </div>
+
+            {/* History Section (Desktop always, Mobile only if library tab) */}
+            <div className={cn(
+              "flex-1 w-full bg-white border-t border-zinc-200 z-20 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.04)] relative overflow-hidden",
+              mobileTab !== 'library' && "hidden lg:flex"
+            )}>
               <div className="px-6 py-2.5 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/30">
                 <div className="flex items-center gap-2">
                   <History className="w-3.5 h-3.5 text-zinc-400" />
@@ -1652,9 +1687,12 @@ export default function App() {
             </div>
           </section>
 
-          {/* Right Panel: Controls */}
-          <aside className="w-80 border-left border-zinc-200 bg-white flex flex-col">
-            <ScrollArea className="flex-1">
+          {/* Right Panel: Controls (Desktop always, Mobile only if edit tab) */}
+          <aside className={cn(
+            "w-full lg:w-80 order-3 lg:order-3 border-t lg:border-t-0 lg:border-l border-zinc-200 bg-white flex flex-col shrink-0",
+            mobileTab !== 'edit' && "hidden lg:flex"
+          )}>
+            <ScrollArea className="flex-1 lg:h-auto h-[400px] sm:h-[500px]">
               <div className="p-6 space-y-8">
                 <section className="space-y-6">
                   <div className="flex items-center justify-between">
