@@ -819,49 +819,111 @@ export default function App() {
         return (
           <div className="space-y-3">
             <EditablePercentage label="Distortion Intensity" value={distortion} onChange={setDistortion} />
-            <Slider value={[distortion]} onValueChange={handleDistortionChange} max={1} step={0.01} className="py-4" />
+            <Slider 
+              value={[distortion]} 
+              onValueChange={handleDistortionChange} 
+              onDoubleClick={() => setDistortion(0.5)}
+              max={1} 
+              step={0.01} 
+              className="py-4 cursor-pointer" 
+              title="Double-click to reset"
+            />
           </div>
         );
       case 'offset':
         return (
           <div className="space-y-3">
             <EditableNumber label="Horizontal Offset" value={Math.round(horizontalOffset * 100)} onChange={(val) => setHorizontalOffset(val / 100)} min={-100} max={100} suffix="%" />
-            <Slider value={[horizontalOffset]} onValueChange={handleHorizontalOffsetChange} min={-1} max={1} step={0.01} className="py-4" />
+            <Slider 
+              value={[horizontalOffset]} 
+              onValueChange={handleHorizontalOffsetChange} 
+              onDoubleClick={() => setHorizontalOffset(0)}
+              min={-1} 
+              max={1} 
+              step={0.01} 
+              className="py-4 cursor-pointer" 
+              title="Double-click to reset"
+            />
           </div>
         );
       case 'width':
         return (
           <div className="space-y-3">
             <EditablePercentage label="Line Thickness" value={barWidthScale} onChange={setBarWidthScale} />
-            <Slider value={[barWidthScale]} onValueChange={handleBarWidthScaleChange} min={0.1} max={2} step={0.01} className="py-4" />
+            <Slider 
+              value={[barWidthScale]} 
+              onValueChange={handleBarWidthScaleChange} 
+              onDoubleClick={() => setBarWidthScale(1)}
+              min={0.1} 
+              max={2} 
+              step={0.01} 
+              className="py-4 cursor-pointer" 
+              title="Double-click to reset"
+            />
           </div>
         );
       case 'smoothing':
         return (
           <div className="space-y-3">
             <EditablePercentage label="Logo Smoothing" value={logoSmoothing} onChange={setLogoSmoothing} />
-            <Slider value={[logoSmoothing]} onValueChange={handleLogoSmoothingChange} min={0} max={1} step={0.01} className="py-4" />
+            <Slider 
+              value={[logoSmoothing]} 
+              onValueChange={handleLogoSmoothingChange} 
+              onDoubleClick={() => setLogoSmoothing(0.2)}
+              min={0} 
+              max={1} 
+              step={0.01} 
+              className="py-4 cursor-pointer" 
+              title="Double-click to reset"
+            />
           </div>
         );
       case 'detail':
         return (
           <div className="space-y-3">
             <EditablePercentage label="Logo Detail Filter" value={logoDetail} onChange={setLogoDetail} />
-            <Slider value={[logoDetail]} onValueChange={handleLogoDetailChange} min={0} max={0.5} step={0.01} className="py-4" />
+            <Slider 
+              value={[logoDetail]} 
+              onValueChange={handleLogoDetailChange} 
+              onDoubleClick={() => setLogoDetail(0.1)}
+              min={0} 
+              max={0.5} 
+              step={0.01} 
+              className="py-4 cursor-pointer" 
+              title="Double-click to reset"
+            />
           </div>
         );
       case 'height':
         return (
           <div className="space-y-3">
             <EditableNumber label="Vertical Scale" value={barcodeHeight} onChange={setBarcodeHeight} min={50} max={500} suffix="px" />
-            <Slider value={[barcodeHeight]} onValueChange={handleHeightChange} min={50} max={500} step={1} className="py-4" />
+            <Slider 
+              value={[barcodeHeight]} 
+              onValueChange={handleHeightChange} 
+              onDoubleClick={() => setBarcodeHeight(150)}
+              min={50} 
+              max={500} 
+              step={1} 
+              className="py-4 cursor-pointer" 
+              title="Double-click to reset"
+            />
           </div>
         );
       case 'safeZone':
         return (
           <div className="space-y-3">
             <EditablePercentage label="Scan-Safe Zone" value={safeZone} onChange={setSafeZone} />
-            <Slider value={[safeZone]} onValueChange={handleSafeZoneChange} min={0} max={0.5} step={0.01} className="py-4" />
+            <Slider 
+              value={[safeZone]} 
+              onValueChange={handleSafeZoneChange} 
+              onDoubleClick={() => setSafeZone(0.2)}
+              min={0} 
+              max={0.5} 
+              step={0.01} 
+              className="py-4 cursor-pointer" 
+              title="Double-click to reset"
+            />
             <div className="flex items-center justify-between">
               <Label htmlFor="show-safe-zone" className="text-[10px] text-zinc-500">Show Guide Overlay</Label>
               <Switch id="show-safe-zone" checked={showSafeZone} onCheckedChange={setShowSafeZone} />
@@ -876,14 +938,33 @@ export default function App() {
         return (
           <div className="space-y-3">
             <EditableNumber label="Silhouette Separation" value={silhouetteGap} onChange={setSilhouetteGap} min={0} max={100} suffix="px" />
-            <Slider value={[silhouetteGap]} onValueChange={handleSilhouetteGapChange} min={0} max={100} step={1} className="py-4" />
+            <Slider 
+              value={[silhouetteGap]} 
+              onValueChange={handleSilhouetteGapChange} 
+              onDoubleClick={() => setSilhouetteGap(0)}
+              min={0} 
+              max={100} 
+              step={1} 
+              className="py-4 cursor-pointer" 
+              title="Double-click to reset"
+            />
           </div>
         );
       case 'numbersGap':
         return (
           <div className="space-y-3">
             <EditableNumber label="Numbers Separation" value={numbersGap} onChange={setNumbersGap} min={0} max={100} suffix="px" />
-            <Slider value={[numbersGap]} onValueChange={handleNumbersGapChange} min={0} max={100} step={1} className="py-4" disabled={!showNumbers} />
+            <Slider 
+              value={[numbersGap]} 
+              onValueChange={handleNumbersGapChange} 
+              onDoubleClick={() => setNumbersGap(15)}
+              min={0} 
+              max={100} 
+              step={1} 
+              className="py-4 cursor-pointer" 
+              disabled={!showNumbers} 
+              title="Double-click to reset"
+            />
           </div>
         );
       default:
