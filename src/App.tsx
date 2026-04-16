@@ -43,7 +43,8 @@ import {
   FolderPlus,
   Folder,
   ChevronRight,
-  MoreVertical
+  MoreVertical,
+  ArrowRightLeft
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import confetti from 'canvas-confetti';
@@ -246,6 +247,16 @@ export default function App() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const [isRearrangingLibrary, setIsRearrangingLibrary] = useState(false);
+  const [isMoveMenuOpen, setIsMoveMenuOpen] = useState(false);
+
+  const moveSelectedToFolder = (folderId: string | null) => {
+    setSavedBarcodes(prev => prev.map(bc => 
+      selectedBarcodes.has(bc.id) ? { ...bc, folderId } : bc
+    ));
+    setSelectedBarcodes(new Set());
+    setIsMoveMenuOpen(false);
+    toast.success(`Moved ${selectedBarcodes.size} items to ${folderId ? folders.find(f => f.id === folderId)?.name : 'Main Library'}`);
+  };
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
@@ -918,25 +929,72 @@ export default function App() {
     if (barcodesToExport.length === 0) return;
 
     const zip = new JSZip();
-    const toastId = toast.loading(`Preparing ${barcodesToExport.length} barcodes...`);
+    const toastId = toast.loading(`Preparing ${barcodesToExport.length} high-quality barcodes...`);
 
     try {
+      // Create a hidden container for high-quality rendering
+      const exportContainer = document.createElement('div');
+      exportContainer.style.position = 'fixed';
+      exportContainer.style.left = '-9999px';
+      exportContainer.style.top = '-9999px';
+      exportContainer.style.width = '1200px'; // High res
+      exportContainer.style.height = '1200px';
+      document.body.appendChild(exportContainer);
+
       for (const bc of barcodesToExport) {
-        // Find the mini canvas element in the library
+        // Render a high-quality version for export
+        // Note: Since we are in React, we might need a better way, but for now
+        // let's try to target the main canvas if we can, or just render hiddenly.
+        // Actually, the easiest way to get high quality is to render one by one 
+        // in the hidden container using a temporary React root or just manipulate the DOM.
+        
+        // Wait, a better approach: temporarily update the main canvas with the bc data and export it.
+        // But that triggers UI flickering.
+        
+        // Let's use the hidden container approach with html-to-image.
+        // We'll render the mini canvas without the 'p-2' and 'w-32' restrictions.
+        
         const miniElement = document.querySelector(`[data-barcode-id="${bc.id}"] #barcode-svg`);
         if (miniElement) {
+          // If the element exists, we can try to clone and scale it
+          const clone = miniElement.cloneNode(true) as HTMLElement;
+          clone.style.width = '1000px';
+          clone.style.height = '1000px';
+          
+          // Reveal numbers if they exist
+          const numbers = clone.querySelector('.barcode-numbers');
+          if (numbers) {
+            numbers.classList.remove('opacity-0');
+            numbers.setAttribute('opacity', '1');
+          }
+
+          exportContainer.appendChild(clone);
+          
           if (format === 'png') {
-            const dataUrl = await toPng(miniElement as HTMLElement, { backgroundColor: bc.bgColor });
+            const dataUrl = await toPng(clone, { 
+              backgroundColor: bc.bgColor,
+              width: 1000,
+              height: 1000,
+              style: {
+                transform: 'scale(1)',
+                transformOrigin: 'top left'
+              }
+            });
             const base64Data = dataUrl.split(',')[1];
             zip.file(`${bc.name.replace(/[/\\?%*:|"<>]/g, '-')}-${bc.id}.png`, base64Data, { base64: true });
           } else {
-            const dataUrl = await toSvg(miniElement as HTMLElement);
-            // SVG data URL is usually data:image/svg+xml;charset=utf-8,<svg...
+            const dataUrl = await toSvg(clone, {
+              width: 1000,
+              height: 1000
+            });
             const svgContent = decodeURIComponent(dataUrl.split(',')[1]);
             zip.file(`${bc.name.replace(/[/\\?%*:|"<>]/g, '-')}-${bc.id}.svg`, svgContent);
           }
+          exportContainer.removeChild(clone);
         }
       }
+
+      document.body.removeChild(exportContainer);
 
       const content = await zip.generateAsync({ type: 'blob' });
       saveAs(content, `barcodes-bulk-${Date.now()}.zip`);
@@ -1194,8 +1252,7 @@ export default function App() {
               )}
             >
               <Download className="w-3 h-3 sm:w-4 sm:h-4" />
-              <span className="hidden xs:inline">{selectedBarcodes.size > 0 ? `SVG (${selectedBarcodes.size})` : 'SVG'}</span>
-              <span className="xs:hidden">{selectedBarcodes.size > 0 ? `(${selectedBarcodes.size})` : 'SVG'}</span>
+              <span>{selectedBarcodes.size > 0 ? `SVG (${selectedBarcodes.size})` : 'SVG'}</span>
             </Button>
             <Button 
               size="sm" 
@@ -1206,8 +1263,7 @@ export default function App() {
               )}
             >
               <Download className="w-3 h-3 sm:w-4 sm:h-4" />
-              <span className="hidden xs:inline">{selectedBarcodes.size > 0 ? `PNG (${selectedBarcodes.size})` : 'PNG'}</span>
-              <span className="xs:hidden">{selectedBarcodes.size > 0 ? `(${selectedBarcodes.size})` : 'PNG'}</span>
+              <span>{selectedBarcodes.size > 0 ? `PNG (${selectedBarcodes.size})` : 'PNG'}</span>
             </Button>
             {selectedBarcodes.size > 0 && (
               <Button 
@@ -1653,6 +1709,34 @@ export default function App() {
               "flex-1 w-full bg-white border-t border-zinc-200 z-20 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.04)] relative overflow-hidden",
               mobileTab !== 'library' && "hidden lg:flex"
             )}>
+              {/* Save Section Pinned at Top */}
+              <div className="px-6 py-4 border-b border-zinc-50 bg-zinc-50/20">
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2 text-zinc-500">
+                    <Save className="w-3.5 h-3.5" />
+                    <h2 className="text-[9px] font-bold uppercase tracking-wider">Save current Barcode</h2>
+                  </div>
+                  <div className="flex gap-2">
+                    <Input 
+                      value={barcodeName}
+                      onChange={(e) => setBarcodeName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveCurrentBarcode();
+                      }}
+                      placeholder="Name your creation..."
+                      className="h-8 text-[10px] bg-white border-zinc-200 focus-visible:ring-zinc-900"
+                    />
+                    <Button 
+                      onClick={saveCurrentBarcode}
+                      className="h-8 bg-zinc-900 text-white hover:bg-zinc-800 rounded-lg px-3 transition-all active:scale-95 font-bold text-[10px] gap-1.5 shrink-0"
+                    >
+                      <Save className="w-3 h-3" />
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
               <div className="px-6 py-2.5 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/30">
                 <div className="flex items-center gap-2">
                   <History className="w-3.5 h-3.5 text-zinc-400" />
@@ -1680,7 +1764,7 @@ export default function App() {
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    className="px-6 py-2 border-b border-zinc-50 overflow-hidden"
+                    className="px-6 py-2 border-b border-zinc-50 overflow-hidden bg-white"
                   >
                     <div className="relative">
                       <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-zinc-400" />
@@ -1697,49 +1781,10 @@ export default function App() {
               </AnimatePresence>
               
               <ScrollArea className="flex-1">
-                <div className="p-6 space-y-8">
-                  {/* Save Section (Moved here for more space) */}
-                  <section className="space-y-4">
-                    <div className="flex items-center gap-2 text-zinc-500">
-                      <Save className="w-3.5 h-3.5" />
-                      <h2 className="text-[10px] font-bold uppercase tracking-wider">Save to Library</h2>
-                    </div>
-                    <Card className="bg-zinc-50/50 border-zinc-100 shadow-none rounded-xl overflow-hidden">
-                      <div className="p-4 space-y-3">
-                        <div className="space-y-1.5">
-                          <Label htmlFor="save-name" className="text-[10px] uppercase text-zinc-400 font-bold tracking-tight">Barcode Name</Label>
-                          <div className="flex gap-2">
-                            <Input 
-                              id="save-name"
-                              value={barcodeName}
-                              onChange={(e) => setBarcodeName(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  saveCurrentBarcode();
-                                }
-                              }}
-                              placeholder="e.g., Summer Collection 2024"
-                              className="h-9 text-xs bg-white border-zinc-200 focus-visible:ring-zinc-900"
-                            />
-                            <Button 
-                              onClick={saveCurrentBarcode}
-                              className="h-9 bg-zinc-900 text-white hover:bg-zinc-800 rounded-lg px-4 transition-all active:scale-95 font-bold text-xs gap-2 shrink-0"
-                            >
-                              <Save className="w-3.5 h-3.5" />
-                              Save
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </Card>
-                  </section>
-
-                  {/* Folders Section (Removed from here, moved to All Saved Barcodes) */}
-
-                  <Separator className="bg-zinc-50" />
+                <div className="p-6 space-y-6">
 
                   {/* Recent Strip (Horizontal) */}
-                  <div className="space-y-3">
+                  <div className="space-y-3 pt-2">
                     <div className="flex items-center justify-between px-1">
                       <h3 className="text-[10px] font-bold uppercase text-zinc-400 tracking-tight">Recent Creations</h3>
                       <div className="h-[1px] flex-1 mx-4 bg-zinc-100" />
@@ -1751,7 +1796,7 @@ export default function App() {
                       onMouseUp={handleMouseUp}
                       onMouseMove={handleMouseMove}
                       className={cn(
-                        "w-full overflow-x-auto overflow-y-hidden select-none scrollbar-none pb-2",
+                        "w-full overflow-x-auto overflow-y-visible select-none scrollbar-none pb-4 pt-2 px-2",
                         isDraggingScroll ? "cursor-grabbing" : "cursor-grab"
                       )}
                     >
@@ -1762,7 +1807,14 @@ export default function App() {
                             <p className="text-[10px] font-medium">No saved barcodes yet</p>
                           </div>
                         ) : (
-                          savedBarcodes.slice(0, 10).map((bc) => (
+                          savedBarcodes
+                            .filter(bc => {
+                              if (!searchQuery) return true;
+                              const q = searchQuery.toLowerCase();
+                              return bc.name.toLowerCase().includes(q) || bc.text.toLowerCase().includes(q);
+                            })
+                            .slice(0, 10)
+                            .map((bc) => (
                             <motion.div
                               layout
                               initial={{ opacity: 0, scale: 0.8 }}
@@ -1815,6 +1867,9 @@ export default function App() {
                                     logoSmoothing={bc.logoSmoothing}
                                     logoDetail={bc.logoDetail}
                                     barcodeHeight={bc.barcodeHeight}
+                                    silhouetteGap={bc.silhouetteGap}
+                                    showNumbers={bc.showNumbers}
+                                    numbersGap={bc.numbersGap}
                                     color={bc.color}
                                     backgroundColor={bc.bgColor}
                                     showSafeZone={false}
@@ -1842,11 +1897,67 @@ export default function App() {
                   </div>
 
                   {/* All Barcodes (Horizontal Grid) */}
-                  <div className="space-y-4">
+                  <div className="space-y-2 pt-2">
                     <div className="flex items-center justify-between px-1">
                       <div className="flex items-center gap-3">
                         <h3 className="text-[10px] font-bold uppercase text-zinc-400 tracking-tight">All Saved Barcodes</h3>
                         <div className="flex items-center gap-1.5">
+                          <AnimatePresence>
+                            {selectedBarcodes.size > 0 && (
+                              <div className="relative">
+                                <motion.div
+                                  initial={{ opacity: 0, x: -10, scale: 0.8 }}
+                                  animate={{ opacity: 1, x: 0, scale: 1 }}
+                                  exit={{ opacity: 0, x: -10, scale: 0.8 }}
+                                  className="flex items-center gap-2 pr-2 border-r border-zinc-100"
+                                >
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className={cn(
+                                      "h-6 px-2 text-[9px] font-bold uppercase tracking-wider gap-1.5 transition-all",
+                                      isMoveMenuOpen ? "bg-zinc-900 text-white" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50"
+                                    )}
+                                    onClick={() => setIsMoveMenuOpen(!isMoveMenuOpen)}
+                                  >
+                                    <ArrowRightLeft className="w-3 h-3" />
+                                    Move to folder
+                                  </Button>
+                                </motion.div>
+                                
+                                <AnimatePresence>
+                                  {isMoveMenuOpen && (
+                                    <motion.div
+                                      initial={{ opacity: 0, y: 10 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      exit={{ opacity: 0, y: 10 }}
+                                      className="absolute bottom-full left-0 mb-2 w-48 bg-white rounded-xl shadow-2xl border border-zinc-100 p-2 z-[60]"
+                                    >
+                                      <div className="space-y-1">
+                                        <button
+                                          onClick={() => moveSelectedToFolder(null)}
+                                          className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-bold text-zinc-600 hover:bg-zinc-50 rounded-lg transition-colors"
+                                        >
+                                          <History className="w-3.5 h-3.5" />
+                                          Main Library
+                                        </button>
+                                        {folders.map(f => (
+                                          <button
+                                            key={f.id}
+                                            onClick={() => moveSelectedToFolder(f.id)}
+                                            className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-bold text-zinc-600 hover:bg-zinc-50 rounded-lg transition-colors"
+                                          >
+                                            <Folder className="w-3.5 h-3.5" />
+                                            {f.name}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </div>
+                            )}
+                          </AnimatePresence>
                           <Button 
                             variant="ghost" 
                             size="icon" 
@@ -1889,14 +2000,14 @@ export default function App() {
                     </div>
 
                     {/* Folder Drop Targets & Navigation */}
-                    <div className="space-y-3 pb-2 pt-4">
+                    <div className="space-y-2 pb-1">
                       <AnimatePresence>
                         {isCreatingFolder && (
                           <motion.div 
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            className="flex gap-2 px-1"
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="flex gap-2 px-1 pt-2 overflow-hidden"
                           >
                             <Input 
                               value={newFolderName}
@@ -1920,7 +2031,7 @@ export default function App() {
                         )}
                       </AnimatePresence>
 
-                      <div className="flex gap-3 overflow-x-auto scrollbar-none px-1 py-6 overflow-visible">
+                      <div className="flex gap-3 overflow-x-auto scrollbar-none px-1 py-4 overflow-visible">
                         <div
                           onDragOver={(e) => {
                             e.preventDefault();
@@ -1986,34 +2097,36 @@ export default function App() {
                       </div>
                     </div>
                     
-                    {savedBarcodes.length > 0 && (
-                      <div 
-                        ref={gridScrollRef}
-                        onMouseDown={handleGridMouseDown}
-                        onMouseLeave={handleGridMouseUp}
-                        onMouseUp={handleGridMouseUp}
-                        onMouseMove={handleGridMouseMove}
-                        className={cn(
-                          "w-full overflow-x-auto overflow-y-hidden select-none scrollbar-none pb-4",
-                          isDraggingGrid ? "cursor-grabbing" : "cursor-grab"
-                        )}
-                      >
-                        {isRearrangingLibrary ? (
-                          <Reorder.Group 
-                            axis="x" 
-                            values={savedBarcodes} 
-                            onReorder={setSavedBarcodes}
-                            className="flex gap-4 min-w-full py-2"
+                        {savedBarcodes.length > 0 && (
+                          <div 
+                            ref={gridScrollRef}
+                            onMouseDown={handleGridMouseDown}
+                            onMouseLeave={handleGridMouseUp}
+                            onMouseUp={handleGridMouseUp}
+                            onMouseMove={handleGridMouseMove}
+                            className={cn(
+                              "w-full overflow-x-auto overflow-y-visible select-none scrollbar-none pb-4 pt-2 px-2",
+                              isDraggingGrid ? "cursor-grabbing" : "cursor-grab"
+                            )}
                           >
-                            {savedBarcodes
-                              .filter(bc => {
-                                if (activeFolderId && bc.folderId !== activeFolderId) return false;
-                                if (!activeFolderId && bc.folderId) return false; // Only show root items
-                                if (!searchQuery) return true;
-                                const q = searchQuery.toLowerCase();
-                                return bc.name.toLowerCase().includes(q) || bc.text.toLowerCase().includes(q);
-                              })
-                              .map((bc) => (
+                            {isRearrangingLibrary ? (
+                              <Reorder.Group 
+                                axis="x" 
+                                values={savedBarcodes} 
+                                onReorder={setSavedBarcodes}
+                                className="flex gap-4 min-w-full py-2"
+                              >
+                                {savedBarcodes
+                                  .filter(bc => {
+                                    if (searchQuery) {
+                                      const q = searchQuery.toLowerCase();
+                                      return bc.name.toLowerCase().includes(q) || bc.text.toLowerCase().includes(q);
+                                    }
+                                    if (activeFolderId && bc.folderId !== activeFolderId) return false;
+                                    if (!activeFolderId && bc.folderId) return false; // Only show root items
+                                    return true;
+                                  })
+                                  .map((bc) => (
                                 <Reorder.Item
                                   key={bc.id}
                                   value={bc}
@@ -2064,6 +2177,9 @@ export default function App() {
                                         logoSmoothing={bc.logoSmoothing}
                                         logoDetail={bc.logoDetail}
                                         barcodeHeight={bc.barcodeHeight}
+                                        silhouetteGap={bc.silhouetteGap}
+                                        showNumbers={bc.showNumbers}
+                                        numbersGap={bc.numbersGap}
                                         color={bc.color}
                                         backgroundColor={bc.bgColor}
                                         showSafeZone={false}
@@ -2078,17 +2194,19 @@ export default function App() {
                           <div className="grid grid-rows-2 grid-flow-col gap-x-4 gap-y-8 min-w-full py-2">
                             {savedBarcodes
                               .filter(bc => {
+                                if (searchQuery) {
+                                  const q = searchQuery.toLowerCase();
+                                  const dateStr = new Date(bc.timestamp).toLocaleString().toLowerCase();
+                                  return (
+                                    bc.name.toLowerCase().includes(q) ||
+                                    bc.text.toLowerCase().includes(q) ||
+                                    bc.type.toLowerCase().includes(q) ||
+                                    dateStr.includes(q)
+                                  );
+                                }
                                 if (activeFolderId && bc.folderId !== activeFolderId) return false;
-                                if (!activeFolderId && bc.folderId && !searchQuery) return false; // Only show root items unless searching
-                                if (!searchQuery) return true;
-                                const q = searchQuery.toLowerCase();
-                                const dateStr = new Date(bc.timestamp).toLocaleString().toLowerCase();
-                                return (
-                                  bc.name.toLowerCase().includes(q) ||
-                                  bc.text.toLowerCase().includes(q) ||
-                                  bc.type.toLowerCase().includes(q) ||
-                                  dateStr.includes(q)
-                                );
+                                if (!activeFolderId && bc.folderId) return false; // Only show root items
+                                return true;
                               })
                               .map((bc) => (
                                 <motion.div
@@ -2177,6 +2295,9 @@ export default function App() {
                                         logoSmoothing={bc.logoSmoothing}
                                         logoDetail={bc.logoDetail}
                                         barcodeHeight={bc.barcodeHeight}
+                                        silhouetteGap={bc.silhouetteGap}
+                                        showNumbers={bc.showNumbers}
+                                        numbersGap={bc.numbersGap}
                                         color={bc.color}
                                         backgroundColor={bc.bgColor}
                                         showSafeZone={false}

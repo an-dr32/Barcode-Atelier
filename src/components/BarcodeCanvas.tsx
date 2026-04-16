@@ -351,14 +351,17 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
             )}
 
             {/* Barcode Text */}
-            {!isMini && showNumbers && (
+            {showNumbers && (
               <text
                 x={viewBoxWidth / 2}
                 y={safeBarcodeHeight + safeNumbersGap + 15}
                 textAnchor="middle"
                 dominantBaseline="middle"
                 fill={color}
-                className="font-mono text-[12px] font-bold tracking-[0.2em]"
+                className={cn(
+                  "font-mono text-[12px] font-bold tracking-[0.2em] barcode-numbers",
+                  isMini && "opacity-0" // Hide in mini mode but keep in DOM for export
+                )}
               >
                 {data.text}
               </text>
