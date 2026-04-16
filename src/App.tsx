@@ -4,6 +4,7 @@ import { generateBarcodeData, BarcodeData, BarcodeType, calculateScannability } 
 import { processImage, ImageProcessingResult } from './lib/image-utils';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -202,6 +203,8 @@ interface SavedBarcode {
   silhouetteGap: number;
   showNumbers: boolean;
   numbersGap: number;
+  numbersTracking: number;
+  showName: boolean;
   color: string;
   bgColor: string;
   silhouetteText?: string;
@@ -240,6 +243,8 @@ export default function App() {
   const [silhouetteGap, setSilhouetteGap] = useState(0);
   const [showNumbers, setShowNumbers] = useState(true);
   const [numbersGap, setNumbersGap] = useState(15);
+  const [numbersTracking, setNumbersTracking] = useState(0.2);
+  const [showName, setShowName] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [customSilhouettes, setCustomSilhouettes] = useState<CustomSilhouette[]>([]);
@@ -281,7 +286,8 @@ export default function App() {
     'height',
     'safeZone',
     'silhouetteGap',
-    'numbersGap'
+    'numbersGap',
+    'numbersTracking'
   ]);
 
   // Section Visibility State
@@ -678,6 +684,8 @@ export default function App() {
       silhouetteGap,
       showNumbers,
       numbersGap,
+      numbersTracking,
+      showName,
       color,
       bgColor,
       silhouetteText,
@@ -767,6 +775,8 @@ export default function App() {
     setSilhouetteGap(bc.silhouetteGap || 0);
     setShowNumbers(bc.showNumbers ?? true);
     setNumbersGap(bc.numbersGap ?? 15);
+    setNumbersTracking(bc.numbersTracking ?? 0.2);
+    setShowName(bc.showName ?? true);
     setColor(bc.color);
     setBgColor(bc.bgColor);
     setSilhouetteText(bc.silhouetteText || '');
@@ -961,11 +971,16 @@ export default function App() {
           clone.style.width = '1000px';
           clone.style.height = '1000px';
           
-          // Reveal numbers if they exist
+          // Reveal numbers and name if they exist
           const numbers = clone.querySelector('.barcode-numbers');
           if (numbers) {
             numbers.classList.remove('opacity-0');
             numbers.setAttribute('opacity', '1');
+          }
+          const nameLabel = clone.querySelector('.barcode-name'); // The name label
+          if (nameLabel) {
+            nameLabel.classList.remove('opacity-0');
+            nameLabel.setAttribute('opacity', '1');
           }
 
           exportContainer.appendChild(clone);
@@ -1167,6 +1182,10 @@ export default function App() {
               <Label htmlFor="show-numbers" className="text-[10px] text-zinc-500">Show Barcode Numbers</Label>
               <Switch id="show-numbers" checked={showNumbers} onCheckedChange={setShowNumbers} />
             </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="show-name" className="text-[10px] text-zinc-500">Show Barcode Name</Label>
+              <Switch id="show-name" checked={showName} onCheckedChange={setShowName} />
+            </div>
           </div>
         );
       case 'silhouetteGap':
@@ -1188,7 +1207,7 @@ export default function App() {
       case 'numbersGap':
         return (
           <div className="space-y-3">
-            <EditableNumber label="Numbers Separation" value={numbersGap} onChange={setNumbersGap} min={0} max={100} suffix="px" />
+            <EditableNumber label="Text Separation" value={numbersGap} onChange={setNumbersGap} min={0} max={100} suffix="px" />
             <Slider 
               value={[numbersGap]} 
               onValueChange={handleNumbersGapChange} 
@@ -1198,6 +1217,22 @@ export default function App() {
               step={1} 
               className="py-4 cursor-pointer" 
               disabled={!showNumbers} 
+              title="Double-click to reset"
+            />
+          </div>
+        );
+      case 'numbersTracking':
+        return (
+          <div className="space-y-3">
+            <EditableNumber label="Text Tracking" value={Math.round(numbersTracking * 100)} onChange={(val) => setNumbersTracking(val / 100)} min={0} max={200} suffix="%" />
+            <Slider 
+              value={[numbersTracking]} 
+              onValueChange={(val) => setNumbersTracking(val[0])} 
+              onDoubleClick={() => setNumbersTracking(0.2)}
+              min={0} 
+              max={2} 
+              step={0.01} 
+              className="py-4 cursor-pointer" 
               title="Double-click to reset"
             />
           </div>
@@ -1639,6 +1674,9 @@ export default function App() {
                     silhouetteGap={silhouetteGap}
                     showNumbers={showNumbers}
                     numbersGap={numbersGap}
+                    numbersTracking={numbersTracking}
+                    showName={showName}
+                    barcodeName={barcodeName}
                     color={color}
                     backgroundColor={bgColor}
                     showSafeZone={showSafeZone}
@@ -1717,14 +1755,17 @@ export default function App() {
                     <h2 className="text-[9px] font-bold uppercase tracking-wider">Save current Barcode</h2>
                   </div>
                   <div className="flex gap-2">
-                    <Input 
+                    <Textarea 
                       value={barcodeName}
                       onChange={(e) => setBarcodeName(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') saveCurrentBarcode();
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          saveCurrentBarcode();
+                        }
                       }}
                       placeholder="Name your creation..."
-                      className="h-8 text-[10px] bg-white border-zinc-200 focus-visible:ring-zinc-900"
+                      className="min-h-8 h-8 text-[10px] bg-white border-zinc-200 focus-visible:ring-zinc-900 py-2 resize-none overflow-hidden"
                     />
                     <Button 
                       onClick={saveCurrentBarcode}
@@ -1837,7 +1878,7 @@ export default function App() {
                               onTouchStart={() => handleLongPressStart(bc.id)}
                               onTouchEnd={handleLongPressEnd}
                               className={cn(
-                                "flex-shrink-0 w-28 h-28 border rounded-xl p-2.5 cursor-pointer transition-all group relative shadow-sm",
+                                "flex-shrink-0 w-28 h-28 border rounded-xl p-2.5 cursor-pointer transition-all group relative shadow-sm overflow-hidden",
                                 selectedBarcodes.has(bc.id) 
                                   ? "border-zinc-900 ring-2 ring-zinc-900/20 bg-zinc-900/5" 
                                   : "bg-zinc-50 border-zinc-200 hover:border-zinc-900 hover:bg-white"
@@ -1870,6 +1911,9 @@ export default function App() {
                                     silhouetteGap={bc.silhouetteGap}
                                     showNumbers={bc.showNumbers}
                                     numbersGap={bc.numbersGap}
+                                    numbersTracking={bc.numbersTracking || 0.2}
+                                    showName={bc.showName || true}
+                                    barcodeName={bc.name}
                                     color={bc.color}
                                     backgroundColor={bc.bgColor}
                                     showSafeZone={false}
@@ -1885,7 +1929,7 @@ export default function App() {
                                   e.stopPropagation();
                                   deleteSavedBarcode(e, bc.id);
                                 }}
-                                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-rose-600 pointer-events-auto"
+                                className="absolute top-1 right-1 w-5 h-5 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-rose-600 pointer-events-auto z-40"
                               >
                                 <Trash2 className="w-2.5 h-2.5" />
                               </button>
@@ -2138,7 +2182,7 @@ export default function App() {
                                       (e as any).dataTransfer.effectAllowed = 'move';
                                     }
                                   }}
-                                  className="flex-shrink-0 w-32 h-32 bg-white border-2 border-zinc-900 rounded-xl p-3 shadow-lg cursor-move flex flex-col relative"
+                                  className="flex-shrink-0 w-32 h-32 bg-white border-2 border-zinc-900 rounded-xl p-3 shadow-lg cursor-move flex flex-col relative overflow-hidden"
                                 >
                                   <div 
                                     className="absolute inset-0 z-0" 
@@ -2150,21 +2194,24 @@ export default function App() {
                                   <div className="flex-1 flex flex-col justify-between pointer-events-none mt-2 z-10">
                                     {editingBarcodeId === bc.id ? (
                                       <div className="pointer-events-auto">
-                                        <Input
+                                        <Textarea
                                           value={editName}
                                           onChange={(e) => setEditName(e.target.value)}
                                           onBlur={finalizeBarcodeRename}
                                           onKeyDown={(e) => {
-                                            if (e.key === 'Enter') finalizeBarcodeRename();
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                              e.preventDefault();
+                                              finalizeBarcodeRename();
+                                            }
                                             if (e.key === 'Escape') setEditingBarcodeId(null);
                                           }}
-                                          className="h-5 text-[10px] p-1 bg-white text-zinc-900"
+                                          className="min-h-1.5 h-auto text-[10px] p-1 bg-white text-zinc-900 resize-none overflow-hidden"
                                           autoFocus
                                           onClick={(e) => e.stopPropagation()}
                                         />
                                       </div>
                                     ) : (
-                                      <p className="text-[10px] font-bold text-zinc-900 truncate">{bc.name}</p>
+                                      <p className="text-[10px] font-bold text-zinc-900 line-clamp-2">{bc.name}</p>
                                     )}
                                     <div className="flex-1 flex items-center justify-center overflow-hidden py-1">
                                       <BarcodeCanvas 
@@ -2180,6 +2227,9 @@ export default function App() {
                                         silhouetteGap={bc.silhouetteGap}
                                         showNumbers={bc.showNumbers}
                                         numbersGap={bc.numbersGap}
+                                        numbersTracking={bc.numbersTracking || 0.2}
+                                        showName={bc.showName || true}
+                                        barcodeName={bc.name}
                                         color={bc.color}
                                         backgroundColor={bc.bgColor}
                                         showSafeZone={false}
@@ -2239,7 +2289,7 @@ export default function App() {
                                     }
                                   }}
                                   className={cn(
-                                    "flex-shrink-0 w-32 h-32 border rounded-xl p-3 cursor-pointer transition-all group relative shadow-sm flex flex-col",
+                                    "flex-shrink-0 w-32 h-32 border rounded-xl p-3 cursor-pointer transition-all group relative shadow-sm flex flex-col overflow-hidden",
                                     selectedBarcodes.has(bc.id) 
                                       ? "border-zinc-900 ring-2 ring-zinc-900/20 bg-zinc-900/5" 
                                       : "bg-zinc-50 border-zinc-200 hover:border-zinc-900 hover:bg-white",
@@ -2263,21 +2313,24 @@ export default function App() {
                                     <div className="space-y-1">
                                       {editingBarcodeId === bc.id ? (
                                         <div className="pointer-events-auto">
-                                          <Input
+                                          <Textarea
                                             value={editName}
                                             onChange={(e) => setEditName(e.target.value)}
                                             onBlur={finalizeBarcodeRename}
                                             onKeyDown={(e) => {
-                                              if (e.key === 'Enter') finalizeBarcodeRename();
+                                              if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                finalizeBarcodeRename();
+                                              }
                                               if (e.key === 'Escape') setEditingBarcodeId(null);
                                             }}
-                                            className="h-5 text-[10px] p-1 bg-white text-zinc-900"
+                                            className="min-h-1.5 h-auto text-[10px] p-1 bg-white text-zinc-900 resize-none overflow-hidden"
                                             autoFocus
                                             onClick={(e) => e.stopPropagation()}
                                           />
                                         </div>
                                       ) : (
-                                        <p className="text-[10px] font-bold text-zinc-900 truncate">{bc.name}</p>
+                                        <p className="text-[10px] font-bold text-zinc-900 line-clamp-2">{bc.name}</p>
                                       )}
                                       <div className="flex justify-between items-center">
                                         <p className="text-[8px] text-zinc-500 truncate">{bc.text}</p>
@@ -2298,6 +2351,9 @@ export default function App() {
                                         silhouetteGap={bc.silhouetteGap}
                                         showNumbers={bc.showNumbers}
                                         numbersGap={bc.numbersGap}
+                                        numbersTracking={bc.numbersTracking || 0.2}
+                                        showName={bc.showName || true}
+                                        barcodeName={bc.name}
                                         color={bc.color}
                                         backgroundColor={bc.bgColor}
                                         showSafeZone={false}
@@ -2318,7 +2374,7 @@ export default function App() {
                                       e.stopPropagation();
                                       deleteSavedBarcode(e, bc.id);
                                     }}
-                                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-rose-600 pointer-events-auto"
+                                    className="absolute top-1 right-1 w-5 h-5 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-rose-600 pointer-events-auto z-40"
                                   >
                                     <Trash2 className="w-2.5 h-2.5" />
                                   </button>

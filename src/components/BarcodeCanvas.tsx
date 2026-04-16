@@ -16,6 +16,9 @@ interface BarcodeCanvasProps {
   silhouetteGap: number;
   showNumbers: boolean;
   numbersGap: number;
+  numbersTracking: number;
+  showName: boolean;
+  barcodeName: string;
   color: string;
   backgroundColor: string;
   showSafeZone: boolean;
@@ -36,6 +39,9 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
   silhouetteGap,
   showNumbers,
   numbersGap,
+  numbersTracking,
+  showName,
+  barcodeName,
   color,
   backgroundColor,
   showSafeZone,
@@ -180,9 +186,13 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
   const safeBarcodeHeight = (typeof barcodeHeight === 'number' && !isNaN(barcodeHeight)) ? barcodeHeight : 150;
   const safeSilhouetteGap = (typeof silhouetteGap === 'number' && !isNaN(silhouetteGap)) ? silhouetteGap : 0;
   const safeNumbersGap = (typeof numbersGap === 'number' && !isNaN(numbersGap)) ? numbersGap : 15;
+  const safeNumbersTracking = (typeof numbersTracking === 'number' && !isNaN(numbersTracking)) ? numbersTracking : 0.2;
 
   const viewBoxWidth = data ? Math.max(120, data.totalWidth + 40) : 120;
-  const viewBoxHeight = safeBarcodeHeight + (showNumbers ? safeNumbersGap + 30 : 0) + 10; 
+  const nameLines = useMemo(() => barcodeName ? barcodeName.split('\n') : [], [barcodeName]);
+  const viewBoxHeight = safeBarcodeHeight + 
+    (showNumbers ? safeNumbersGap + 35 : 0) + 
+    (showName && barcodeName && !isMini ? nameLines.length * 15 + 5 : 0) + 10; 
   const padding = (viewBoxWidth - (data?.totalWidth || 0)) / 2;
 
   return (
@@ -276,25 +286,41 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
                   
                   if (safeDistortion > 0) {
                     // Apply distortion: interpolate between full bar [0, 1] and logo segments
-                    finalSegments = logoSegments.map(seg => ({
+                    logoSegments = logoSegments.map(seg => ({
                       start: seg.start * safeDistortion,
                       end: 1 - (1 - seg.end) * safeDistortion
                     }));
                   } else {
-                    finalSegments = [{ start: 0, end: 1 }];
+                    logoSegments = [{ start: 0, end: 1 }];
                   }
+
+                  // Apply silhouette gap to logo segments ONLY
+                  if (silhouetteData && safeSilhouetteGap > 0) {
+                    logoSegments = logoSegments.map(seg => ({
+                      start: Math.max(0, seg.start - safeSilhouetteGap / safeBarcodeHeight),
+                      end: Math.max(0, seg.end - safeSilhouetteGap / safeBarcodeHeight)
+                    }));
+                  }
+                  
+                  finalSegments = [...logoSegments];
                 } else {
                   // Fallback wave if no silhouette
                   const xPos = ((bar.x + bar.width / 2) / totalWidth) - horizontalOffset;
                   const wave = (Math.sin(xPos * 12) * 0.45 + 0.5);
-                  finalSegments = [{ start: (1 - wave) * safeDistortion, end: 1 }];
+                  let fallbackSeg = { start: (1 - wave) * safeDistortion, end: 1 };
+                  
+                  // Apply gap to fallback wave too
+                  if (safeSilhouetteGap > 0) {
+                    fallbackSeg.start = Math.max(0, fallbackSeg.start - safeSilhouetteGap / safeBarcodeHeight);
+                    fallbackSeg.end = Math.max(0, fallbackSeg.end - safeSilhouetteGap / safeBarcodeHeight);
+                  }
+                  finalSegments = [fallbackSeg];
                 }
 
-                // Ensure Safe Zone is always present for scannability
+                // Ensure Safe Zone is always present for scannability at the very end
+                // It is NOT shifted by the silhouette gap
                 if (safeSafeZone > 0) {
-                  const safeStart = 1 - safeSafeZone;
-                  const safeEnd = 1;
-                  finalSegments.push({ start: safeStart, end: safeEnd });
+                  finalSegments.push({ start: 1 - safeSafeZone, end: 1 });
                 }
 
                 // Merge overlapping segments
@@ -317,18 +343,13 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
                   const yPos = seg.start * safeBarcodeHeight;
                   const h = Math.max(0.5, (seg.end - seg.start) * safeBarcodeHeight);
                   
-                  // Apply silhouette gap: push down segments that are NOT safe zone
-                  const isSafeZone = seg.start >= (1 - safeSafeZone - 0.001);
-                  const adjustedY = (isSafeZone || !silhouetteData) ? yPos : Math.max(0, yPos - safeSilhouetteGap);
-                  const adjustedH = h; // Keep height constant to avoid moving the bottom edge
-
                   return (
                     <rect
                       key={`${idx}-${segIdx}-${seg.start}-${seg.end}-${safeDistortion}-${safeSafeZone}-${data.text}-${horizontalOffset}-${barWidthScale}-${safeSilhouetteGap}`}
                       x={bar.x + padding + xOffset}
                       width={scaledWidth}
-                      y={adjustedY}
-                      height={adjustedH}
+                      y={yPos}
+                      height={h}
                       fill={color}
                       shapeRendering="crispEdges"
                     />
@@ -358,12 +379,50 @@ export const BarcodeCanvas: React.FC<BarcodeCanvasProps> = ({
                 textAnchor="middle"
                 dominantBaseline="middle"
                 fill={color}
+                style={{ 
+                  letterSpacing: `${safeNumbersTracking}em`,
+                  fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, monospace',
+                  fontWeight: 'bold',
+                  fontSize: '12px'
+                }}
                 className={cn(
-                  "font-mono text-[12px] font-bold tracking-[0.2em] barcode-numbers",
+                  "barcode-numbers",
                   isMini && "opacity-0" // Hide in mini mode but keep in DOM for export
                 )}
               >
                 {data.text}
+              </text>
+            )}
+
+            {/* Barcode Name */}
+            {showName && nameLines.length > 0 && (
+              <text
+                x={viewBoxWidth / 2}
+                y={safeBarcodeHeight + (showNumbers ? safeNumbersGap + 40 : 20)}
+                textAnchor="middle"
+                fill={color}
+                style={{ 
+                  fontFamily: '"Inter", ui-sans-serif, system-ui, sans-serif',
+                  fontWeight: 'bold',
+                  fontSize: '10px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.1em'
+                }}
+                className={cn(
+                  "barcode-name",
+                  isMini && "opacity-0"
+                )}
+              >
+                {nameLines.map((line, idx) => (
+                  <tspan
+                    key={idx}
+                    x={viewBoxWidth / 2}
+                    dy={idx === 0 ? 0 : "1.2em"}
+                    style={{ textTransform: 'uppercase' }}
+                  >
+                    {line.toUpperCase()}
+                  </tspan>
+                ))}
               </text>
             )}
 
