@@ -526,9 +526,9 @@ export default function App() {
 
     if (!data && inputText) {
       if (barcodeType === 'EAN13') {
-        setError('EAN-13 requires 12 or 13 numeric digits.');
+        setError('EAN-13 requires exactly 13 numeric digits and a valid checksum.');
       } else if (barcodeType === 'UPC') {
-        setError('UPC requires 11 or 12 numeric digits.');
+        setError('UPC requires exactly 12 numeric digits and a valid checksum.');
       } else {
         setError('Invalid input for selected barcode type.');
       }
@@ -1563,7 +1563,7 @@ export default function App() {
                         className="bg-zinc-50 border-zinc-200 focus:ring-zinc-900"
                       />
                       <p className="text-[10px] text-zinc-400">
-                        {barcodeType === 'EAN13' ? 'Requires 12 or 13 digits' : 'Alphanumeric supported'}
+                        {barcodeType === 'EAN13' ? 'Requires 13 numeric digits' : barcodeType === 'UPC' ? 'Requires 12 numeric digits' : 'Alphanumeric supported'}
                       </p>
                     </div>
 

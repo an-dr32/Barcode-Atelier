@@ -36,13 +36,10 @@ To ensure a smooth import-to-export workflow, follow these standards:
 
 #### 1. Symbology Constraints
 *   **CODE 128 (`C128`)**: Accepts full ASCII (letters, numbers, symbols). Ideal for alphanumeric IDs.
-*   **EAN-13 (`EAN13`)**: Requires **12 or 13 numeric digits**. 
-*   **UPC-A (`UPC`)**: Requires **11 or 12 numeric digits**.
+*   **EAN-13 (`EAN13`)**: Requires **exactly 13 numeric digits** including a valid check digit. 
+*   **UPC-A (`UPC`)**: Requires **exactly 12 numeric digits** including a valid check digit.
 
-#### 2. Auto-Checksum Correction
-The engine includes a **Self-Healing Checksum** feature. If you provide a numeric string for EAN-13 or UPC that is missing a check digit (e.g., 12 digits for EAN) or has an incorrect one, the system will automatically calculate and fix it to make the barcode valid and scannable.
-
-#### 3. Interactive Review
+#### 2. Interactive Review
 If the data in your file doesn't match the assigned standard (e.g., you put "HELLO" in an EAN-13 column), a **Review Modal** will appear. 
 *   Use the **"Apply to All"** feature in the modal to quickly fix thousands of rows.
 *   You can toggle between standards manually to see which one makes that specific value valid.
