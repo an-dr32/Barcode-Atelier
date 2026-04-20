@@ -294,16 +294,16 @@ export default function App() {
   const [isRearranging, setIsRearranging] = useState(false);
   const [mobileTab, setMobileTab] = useState<'edit' | 'library'>('edit');
   const [transformationOrder, setTransformationOrder] = useState([
-    'distortion',
-    'offset',
-    'width',
-    'smoothing',
-    'detail',
-    'height',
     'safeZone',
     'silhouetteGap',
     'numbersGap',
-    'numbersTracking'
+    'numbersTracking',
+    'height',
+    'distortion',
+    'offset',
+    'detail',
+    'smoothing',
+    'width'
   ]);
 
   // Section Visibility State
