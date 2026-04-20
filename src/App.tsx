@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { BarcodeCanvas } from './components/BarcodeCanvas';
-import { generateBarcodeData, BarcodeData, BarcodeType, calculateScannability } from './lib/barcode-utils';
+import { generateBarcodeData, BarcodeData, BarcodeType, calculateScannability, validateBarcode } from './lib/barcode-utils';
 import { processImage, ImageProcessingResult } from './lib/image-utils';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,8 +45,12 @@ import {
   Folder,
   ChevronRight,
   MoreVertical,
-  ArrowRightLeft
+  ArrowRightLeft,
+  FileUp,
+  ExternalLink
 } from 'lucide-react';
+import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { toPng, toSvg } from 'html-to-image';
@@ -226,6 +230,15 @@ interface CustomSilhouette {
   previewUrl: string;
 }
 
+interface PendingImportRow {
+  id: string;
+  value: string;
+  name: string;
+  originalStandard: string;
+  currentStandard: BarcodeType;
+  isValid: boolean;
+}
+
 export default function App() {
   // State
   const [inputText, setInputText] = useState('123456789012');
@@ -246,6 +259,9 @@ export default function App() {
   const [numbersTracking, setNumbersTracking] = useState(0.2);
   const [showName, setShowName] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
+  const [isDraggingBulk, setIsDraggingBulk] = useState(false);
+  const [pendingImports, setPendingImports] = useState<PendingImportRow[]>([]);
+  const [isBulkImportFixOpen, setIsBulkImportFixOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [customSilhouettes, setCustomSilhouettes] = useState<CustomSilhouette[]>([]);
   const [savedBarcodes, setSavedBarcodes] = useState<SavedBarcode[]>([]);
@@ -510,9 +526,9 @@ export default function App() {
 
     if (!data && inputText) {
       if (barcodeType === 'EAN13') {
-        setError('EAN-13 requires exactly 12 or 13 digits.');
+        setError('EAN-13 requires 12 or 13 numeric digits.');
       } else if (barcodeType === 'UPC') {
-        setError('UPC requires exactly 11 or 12 digits.');
+        setError('UPC requires 11 or 12 numeric digits.');
       } else {
         setError('Invalid input for selected barcode type.');
       }
@@ -696,6 +712,186 @@ export default function App() {
     setSavedBarcodes(prev => [newSaved, ...prev]);
     toast.success(`"${newSaved.name}" saved to drawer`);
     setBarcodeName('My Barcode');
+  };
+
+  const handleBulkImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    processBulkFile(file);
+    e.target.value = '';
+  };
+
+  const processBulkFile = (file: File) => {
+    const fileName = file.name.toLowerCase();
+    const isCsv = fileName.endsWith('.csv');
+    const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+
+    if (!isCsv && !isExcel) {
+      toast.error('Please upload a CSV or Excel file');
+      return;
+    }
+
+    const validateAndProcessRows = (data: any[]) => {
+      const validBarcodes: SavedBarcode[] = [];
+      const invalidRows: PendingImportRow[] = [];
+
+      data.forEach((row: any) => {
+        const val = row.Value || row.value || row.VALUE;
+        const name = row.Name || row.name || row.NAME;
+        const standard = row.Standard || row.standard || row.STANDARD;
+
+        if (val) {
+          let type: BarcodeType = 'CODE128';
+          const s = String(standard || '').toUpperCase().trim();
+          if (s === 'EAN13' || s === 'EAN-13') type = 'EAN13';
+          else if (s === 'UPC' || s === 'UPC-A') type = 'UPC';
+          else if (s === 'C128' || s === 'CODE128') type = 'CODE128';
+
+          const isValid = validateBarcode(String(val), type);
+
+          if (isValid) {
+            const newSaved: SavedBarcode = {
+              id: Math.random().toString(36).substr(2, 9),
+              name: name || 'Imported Barcode',
+              text: String(val),
+              type: type,
+              silhouette,
+              distortion,
+              safeZone,
+              horizontalOffset,
+              barWidthScale,
+              logoSmoothing,
+              logoDetail,
+              barcodeHeight,
+              silhouetteGap,
+              showNumbers,
+              numbersGap,
+              numbersTracking,
+              showName,
+              color,
+              bgColor,
+              silhouetteText,
+              silhouetteFont,
+              silhouetteFontSize,
+              timestamp: Date.now()
+            };
+            validBarcodes.push(newSaved);
+          } else {
+            invalidRows.push({
+              id: Math.random().toString(36).substr(2, 9),
+              value: String(val),
+              name: name || 'Imported Barcode',
+              originalStandard: s || 'Unknown',
+              currentStandard: type,
+              isValid: false
+            });
+          }
+        }
+      });
+
+      if (validBarcodes.length > 0) {
+        setSavedBarcodes(prev => [...validBarcodes, ...prev]);
+        toast.success(`Imported ${validBarcodes.length} valid barcodes`);
+      }
+
+      if (invalidRows.length > 0) {
+        setPendingImports(invalidRows);
+        setIsBulkImportFixOpen(true);
+        toast.warning(`${invalidRows.length} items have mismatched standards and need correction`);
+      }
+    };
+
+    if (isCsv) {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          validateAndProcessRows(results.data);
+        },
+        error: (err) => {
+          toast.error(`Error parsing CSV: ${err.message}`);
+        }
+      });
+    } else {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const bdata = evt.target?.result;
+          const wb = XLSX.read(bdata, { type: 'binary' });
+          const wsname = wb.SheetNames[0];
+          const ws = wb.Sheets[wsname];
+          const data = XLSX.utils.sheet_to_json(ws);
+          validateAndProcessRows(data);
+        } catch (err) {
+          toast.error('Error reading Excel file');
+        }
+      };
+      reader.readAsBinaryString(file);
+    }
+  };
+
+  const handleBulkImportResolve = (rowId: string, newType: BarcodeType) => {
+    setPendingImports(prev => prev.map(row => {
+      if (row.id === rowId) {
+        return {
+          ...row,
+          currentStandard: newType,
+          isValid: validateBarcode(row.value, newType)
+        };
+      }
+      return row;
+    }));
+  };
+
+  const applyStandardToAllPending = (type: BarcodeType) => {
+    setPendingImports(prev => prev.map(row => ({
+      ...row,
+      currentStandard: type,
+      isValid: validateBarcode(row.value, type)
+    })));
+  };
+
+  const finalizeBulkImportFix = () => {
+    const readyBarcodes = pendingImports
+      .filter(row => row.isValid)
+      .map(row => ({
+        id: row.id,
+        name: row.name,
+        text: row.value,
+        type: row.currentStandard as BarcodeType,
+        silhouette,
+        distortion,
+        safeZone,
+        horizontalOffset,
+        barWidthScale,
+        logoSmoothing,
+        logoDetail,
+        barcodeHeight,
+        silhouetteGap,
+        showNumbers,
+        numbersGap,
+        numbersTracking,
+        showName,
+        color,
+        bgColor,
+        silhouetteText,
+        silhouetteFont,
+        silhouetteFontSize,
+        timestamp: Date.now()
+      }));
+
+    if (readyBarcodes.length > 0) {
+      setSavedBarcodes(prev => [...readyBarcodes, ...prev]);
+      toast.success(`Successfully added ${readyBarcodes.length} corrected barcodes`);
+    }
+
+    const stillInvalid = pendingImports.filter(row => !row.isValid);
+    if (stillInvalid.length > 0) {
+      toast.error(`${stillInvalid.length} items are still invalid and were skipped`);
+    }
+
+    setPendingImports([]);
+    setIsBulkImportFixOpen(false);
   };
 
   const finalizeFolderCreation = () => {
@@ -1063,6 +1259,24 @@ export default function App() {
     }
   };
 
+  const handleBulkDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingBulk(true);
+  };
+
+  const handleBulkDragLeave = () => {
+    setIsDraggingBulk(false);
+  };
+
+  const handleBulkDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingBulk(false);
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      processBulkFile(file);
+    }
+  };
+
   const renderTransformationControl = (id: string) => {
     switch (id) {
       case 'distortion':
@@ -1351,6 +1565,40 @@ export default function App() {
                       <p className="text-[10px] text-zinc-400">
                         {barcodeType === 'EAN13' ? 'Requires 12 or 13 digits' : 'Alphanumeric supported'}
                       </p>
+                    </div>
+
+                    <div className="pt-2">
+                      <input 
+                        type="file" 
+                        id="bulk-import" 
+                        className="hidden" 
+                        accept=".csv, .xlsx, .xls"
+                        onChange={handleBulkImport}
+                      />
+                      <div 
+                        className={cn(
+                          "border-2 border-dashed rounded-xl p-4 text-center transition-all cursor-pointer group space-y-2",
+                          isDraggingBulk 
+                            ? "border-zinc-900 bg-zinc-100 scale-[1.02]" 
+                            : "border-zinc-200 bg-zinc-50/50 hover:border-zinc-400"
+                        )}
+                        onClick={() => document.getElementById('bulk-import')?.click()}
+                        onDragOver={handleBulkDragOver}
+                        onDragLeave={handleBulkDragLeave}
+                        onDrop={handleBulkDrop}
+                      >
+                        <div className="w-8 h-8 bg-white rounded-full shadow-sm border border-zinc-100 flex items-center justify-center mx-auto group-hover:scale-110 transition-transform">
+                          <FileUp className="w-4 h-4 text-zinc-400" />
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-[10px] font-bold text-zinc-600 group-hover:text-zinc-900">
+                            {isDraggingBulk ? 'Drop to Import' : 'Import Bulk CSV/Excel'}
+                          </p>
+                          <p className="text-[9px] text-zinc-400">
+                            Columns: <span className="font-mono">Value, Name, Standard</span>
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </section>
@@ -2574,6 +2822,98 @@ export default function App() {
             </div>
           </div>
         </footer>
+
+        {/* Bulk Import Resolver Modal */}
+        <AnimatePresence>
+          {isBulkImportFixOpen && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm"
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
+              >
+                <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+                  <div>
+                    <h2 className="text-xl font-bold tracking-tight">Review Imports</h2>
+                    <p className="text-sm text-zinc-500">Some barcodes don't match their assigned standards. Please fix them below.</p>
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={() => setIsBulkImportFixOpen(false)} className="rounded-full">
+                    <XCircle className="w-5 h-5 text-zinc-400" />
+                  </Button>
+                </div>
+
+                <div className="p-4 bg-zinc-100/50 border-b border-zinc-100 flex items-center gap-3">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Apply to all remaining:</span>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" className="h-7 text-[10px] px-3 font-bold hover:bg-zinc-900 hover:text-white transition-all" onClick={() => applyStandardToAllPending('CODE128')}>CODE 128</Button>
+                    <Button variant="outline" size="sm" className="h-7 text-[10px] px-3 font-bold hover:bg-zinc-900 hover:text-white transition-all" onClick={() => applyStandardToAllPending('EAN13')}>EAN-13</Button>
+                    <Button variant="outline" size="sm" className="h-7 text-[10px] px-3 font-bold hover:bg-zinc-900 hover:text-white transition-all" onClick={() => applyStandardToAllPending('UPC')}>UPC-A</Button>
+                  </div>
+                </div>
+
+                <ScrollArea className="flex-1 p-6">
+                  <div className="space-y-6">
+                    {pendingImports.map((row) => (
+                      <div key={row.id} className={cn("p-4 rounded-xl border transition-all", row.isValid ? "bg-emerald-50/30 border-emerald-100" : "bg-rose-50/30 border-rose-100 shadow-sm")}>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-bold text-zinc-900">{row.name}</span>
+                              <span className="px-1.5 py-0.5 rounded bg-zinc-100 text-[9px] font-mono text-zinc-500">{row.value}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-[10px] text-zinc-500">
+                              <span>Original Standard: <span className="font-bold text-zinc-700">{row.originalStandard}</span></span>
+                              {!row.isValid && (
+                                <span className="text-rose-500 font-bold flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3" /> 
+                                  Standard mismatch
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            {(['CODE128', 'EAN13', 'UPC'] as BarcodeType[]).map((type) => (
+                              <Button
+                                key={type}
+                                variant={row.currentStandard === type ? "default" : "outline"}
+                                size="sm"
+                                className={cn(
+                                  "h-8 px-3 text-[10px] font-bold transition-all",
+                                  row.currentStandard === type && row.isValid ? "bg-emerald-600 hover:bg-emerald-700 border-emerald-600" : "",
+                                  row.currentStandard === type && !row.isValid ? "bg-rose-600 hover:bg-rose-700 border-rose-600 shadow-lg animate-pulse" : ""
+                                )}
+                                onClick={() => handleBulkImportResolve(row.id, type)}
+                              >
+                                {type === 'CODE128' ? 'C128' : type === 'EAN13' ? 'EAN-13' : 'UPC-A'}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+
+                <div className="p-6 border-t border-zinc-100 bg-zinc-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="text-[11px] text-zinc-500 font-medium">
+                    {pendingImports.filter(r => r.isValid).length} ready to import, {pendingImports.filter(r => !r.isValid).length} still invalid.
+                  </div>
+                  <div className="flex items-center gap-3 w-full sm:w-auto">
+                    <Button variant="ghost" className="flex-1 sm:flex-none text-zinc-500" onClick={() => { setPendingImports([]); setIsBulkImportFixOpen(false); }}>Cancel All</Button>
+                    <Button className="flex-1 sm:flex-none bg-zinc-900 hover:bg-black text-white px-8" onClick={finalizeBulkImportFix}>Finalize Import</Button>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </TooltipProvider>
   );

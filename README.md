@@ -9,6 +9,43 @@ A modern design tool to generate, customize, and transform barcodes into visuall
 - **Text-to-Shape**: Convert any text into a silhouette for barcode mapping.
 - **Real-time Scannability**: Live heuristic feedback on whether your design remains scannable.
 - **Export**: Save as high-quality PNG or SVG.
+- **Bulk Import**: Import dozens of barcodes at once via CSV or Excel with interactive conflict resolution.
+
+---
+
+## Bulk Import Guide
+
+Bulk importing allows you to rapidly create multiple barcodes using data from external files. 
+
+### Supported Formats
+*   **CSV** (Comma Separated Values)
+*   **XLSX / XLS** (Excel Spreadsheets)
+
+### Required Data Schema
+The importer looks for the following column headers (case-insensitive):
+
+| Column | Type | Requirement | Description |
+| :--- | :--- | :--- | :--- |
+| **Value** | String | Required | The actual data context to encode. |
+| **Name** | String | Optional | The label for the barcode (defaults to "Imported Barcode"). |
+| **Standard** | String | Optional | The symbology: `C128`, `EAN13`, or `UPC`. |
+
+### Validation & Best Practices
+
+To ensure a smooth import-to-export workflow, follow these standards:
+
+#### 1. Symbology Constraints
+*   **CODE 128 (`C128`)**: Accepts full ASCII (letters, numbers, symbols). Ideal for alphanumeric IDs.
+*   **EAN-13 (`EAN13`)**: Requires **12 or 13 numeric digits**. 
+*   **UPC-A (`UPC`)**: Requires **11 or 12 numeric digits**.
+
+#### 2. Auto-Checksum Correction
+The engine includes a **Self-Healing Checksum** feature. If you provide a numeric string for EAN-13 or UPC that is missing a check digit (e.g., 12 digits for EAN) or has an incorrect one, the system will automatically calculate and fix it to make the barcode valid and scannable.
+
+#### 3. Interactive Review
+If the data in your file doesn't match the assigned standard (e.g., you put "HELLO" in an EAN-13 column), a **Review Modal** will appear. 
+*   Use the **"Apply to All"** feature in the modal to quickly fix thousands of rows.
+*   You can toggle between standards manually to see which one makes that specific value valid.
 
 ---
 

@@ -15,6 +15,47 @@ export interface BarcodeData {
   totalWidth: number;
 }
 
+export function validateAndFixEan(text: string): string {
+  if (!/^\d{12,13}$/.test(text)) return text;
+  
+  const digits = text.split('').map(Number);
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    sum += digits[i] * (i % 2 === 0 ? 1 : 3);
+  }
+  const checksum = (10 - (sum % 10)) % 10;
+  
+  if (text.length === 13 && digits[12] !== checksum) {
+    // If 13 digits provided but last is wrong, return correctly fixed 13-digit string
+    return text.substring(0, 12) + checksum;
+  }
+  
+  return text.substring(0, 12) + checksum; // Always return full 13 digits
+}
+
+export function validateAndFixUpc(text: string): string {
+  if (!/^\d{11,12}$/.test(text)) return text;
+  
+  const digits = text.split('').map(Number);
+  let sum = 0;
+  for (let i = 0; i < 11; i++) {
+    sum += digits[i] * (i % 2 === 0 ? 3 : 1);
+  }
+  const checksum = (10 - (sum % 10)) % 10;
+  
+  if (text.length === 12 && digits[11] !== checksum) {
+    return text.substring(0, 11) + checksum;
+  }
+  
+  return text.substring(0, 11) + checksum;
+}
+
+export function validateBarcode(text: string, type: BarcodeType): boolean {
+  if (type === 'EAN13') return /^\d{12,13}$/.test(text);
+  if (type === 'UPC') return /^\d{11,12}$/.test(text);
+  return true; // CODE128
+}
+
 export function generateBarcodeData(text: string, type: BarcodeType, doc?: any): BarcodeData | null {
   if (!text) return null;
 
@@ -23,15 +64,18 @@ export function generateBarcodeData(text: string, type: BarcodeType, doc?: any):
     throw new Error('No document implementation provided for barcode generation');
   }
 
+  let processedText = text;
   if (type === 'EAN13') {
     if (!/^\d{12,13}$/.test(text)) return null;
+    processedText = validateAndFixEan(text);
   } else if (type === 'UPC') {
     if (!/^\d{11,12}$/.test(text)) return null;
+    processedText = validateAndFixUpc(text);
   }
 
   try {
     const svg = documentToUse.createElementNS("http://www.w3.org/2000/svg", "svg");
-    JsBarcode(svg, text, {
+    JsBarcode(svg, processedText, {
       format: type,
       displayValue: false,
       margin: 0,
@@ -109,7 +153,7 @@ export function generateBarcodeData(text: string, type: BarcodeType, doc?: any):
       bars: normalizedBars,
       binary,
       type,
-      text: text, // We'll keep the original for now, but ensure it's valid
+      text: processedText, 
       totalWidth
     };
   } catch (e) {
