@@ -91,6 +91,28 @@ The application includes an Express backend that supports bulk barcode generatio
 }
 ```
 
+#### Endpoint: `POST /api/import`
+
+Supports bulk generation via file upload (multipart/form-data).
+
+**Parameters:**
+- `file`: The CSV or Excel file to process.
+
+**Response Body:**
+```json
+{
+  "count": 2,
+  "results": [
+    {
+      "input": { "value": "1234567890128", "name": "ProdA", "standard": "EAN13" },
+      "type": "EAN13",
+      "isValid": true,
+      "data": { ... }
+    }
+  ]
+}
+```
+
 **Response Body:**
 ```json
 {
