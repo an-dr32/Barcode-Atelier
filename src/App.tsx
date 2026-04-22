@@ -39,6 +39,7 @@ import {
   Redo2,
   Search,
   Type,
+  X,
   GripVertical,
   LayoutGrid,
   FolderPlus,
@@ -239,6 +240,25 @@ interface PendingImportRow {
   isValid: boolean;
 }
 
+interface TransformationPreset {
+  id: string;
+  name: string;
+  distortion: number;
+  safeZone: number;
+  horizontalOffset: number;
+  barWidthScale: number;
+  logoSmoothing: number;
+  logoDetail: number;
+  barcodeHeight: number;
+  silhouetteGap: number;
+  showNumbers: boolean;
+  numbersGap: number;
+  numbersTracking: number;
+  showName: boolean;
+  showSafeZone: boolean;
+  timestamp: number;
+}
+
 export default function App() {
   // State
   const [inputText, setInputText] = useState('123456789012');
@@ -269,6 +289,10 @@ export default function App() {
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const [isRearrangingLibrary, setIsRearrangingLibrary] = useState(false);
   const [isMoveMenuOpen, setIsMoveMenuOpen] = useState(false);
+  const [transformationPresets, setTransformationPresets] = useState<TransformationPreset[]>([]);
+  const [newPresetName, setNewPresetName] = useState('');
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
+  const [presetEditName, setPresetEditName] = useState('');
 
   const moveSelectedToFolder = (folderId: string | null) => {
     setSavedBarcodes(prev => prev.map(bc => 
@@ -504,6 +528,78 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo]);
+
+  const saveTransformationPreset = () => {
+    if (!newPresetName.trim()) {
+      toast.error('Please enter a name for the preset');
+      return;
+    }
+
+    const newPreset: TransformationPreset = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: newPresetName.trim(),
+      distortion,
+      safeZone,
+      horizontalOffset,
+      barWidthScale,
+      logoSmoothing,
+      logoDetail,
+      barcodeHeight,
+      silhouetteGap,
+      showNumbers,
+      numbersGap,
+      numbersTracking,
+      showName,
+      showSafeZone,
+      timestamp: Date.now()
+    };
+
+    setTransformationPresets(prev => [newPreset, ...prev]);
+    setNewPresetName('');
+    toast.success(`Transformation preset "${newPreset.name}" saved`);
+  };
+
+  const applyTransformationPreset = (preset: TransformationPreset) => {
+    setDistortion(preset.distortion);
+    setSafeZone(preset.safeZone);
+    setHorizontalOffset(preset.horizontalOffset);
+    setBarWidthScale(preset.barWidthScale);
+    setLogoSmoothing(preset.logoSmoothing);
+    setLogoDetail(preset.logoDetail);
+    setBarcodeHeight(preset.barcodeHeight);
+    setSilhouetteGap(preset.silhouetteGap);
+    setShowNumbers(preset.showNumbers);
+    setNumbersGap(preset.numbersGap);
+    setNumbersTracking(preset.numbersTracking);
+    setShowName(preset.showName);
+    setShowSafeZone(preset.showSafeZone);
+    toast.success(`Applied preset: ${preset.name}`);
+  };
+
+  const deleteTransformationPreset = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setTransformationPresets(prev => prev.filter(p => p.id !== id));
+    toast.success('Transformation preset deleted');
+  };
+
+  const startEditingPreset = (preset: TransformationPreset) => {
+    setEditingPresetId(preset.id);
+    setPresetEditName(preset.name);
+  };
+
+  const finalizePresetRename = () => {
+    if (!editingPresetId) return;
+    if (!presetEditName.trim()) {
+      setEditingPresetId(null);
+      return;
+    }
+
+    setTransformationPresets(prev => prev.map(p => 
+      p.id === editingPresetId ? { ...p, name: presetEditName.trim() } : p
+    ));
+    setEditingPresetId(null);
+    toast.success('Preset renamed');
+  };
 
   const resetTransformations = () => {
     setDistortion(0.5);
@@ -2688,7 +2784,78 @@ export default function App() {
                         exit={{ height: 0, opacity: 0 }}
                         className="space-y-6 overflow-hidden"
                       >
-                        <Reorder.Group axis="y" values={transformationOrder} onReorder={setTransformationOrder} className="space-y-6">
+                        <div className="space-y-4 px-1 pt-1">
+                          {/* Saved Presets Section */}
+                          <div className="space-y-3 p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-[10px] uppercase text-zinc-400 font-bold tracking-tight">Saved Transformations</Label>
+                              <span className="text-[9px] font-bold text-zinc-300">{transformationPresets.length}</span>
+                            </div>
+                            
+                            <div className="flex gap-2">
+                              <Input 
+                                value={newPresetName}
+                                onChange={(e) => setNewPresetName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveTransformationPreset();
+                                }}
+                                placeholder="Preset name..."
+                                className="h-7 text-[10px] bg-white border-zinc-200 focus-visible:ring-zinc-900 px-2"
+                              />
+                              <Button 
+                                size="sm" 
+                                className="h-7 px-2 bg-zinc-900 text-white text-[9px] font-bold shrink-0 gap-1.5"
+                                onClick={saveTransformationPreset}
+                              >
+                                <Save className="w-3 h-3" />
+                                Save
+                              </Button>
+                            </div>
+
+                            {transformationPresets.length > 0 && (
+                              <div className="flex gap-2 overflow-x-auto pb-1 pt-1 scrollbar-none">
+                                {transformationPresets.map((preset) => (
+                                  <div key={preset.id} className="relative group/preset shrink-0">
+                                    <div
+                                      onDoubleClick={() => startEditingPreset(preset)}
+                                      onClick={() => applyTransformationPreset(preset)}
+                                      className={cn(
+                                        "px-3 py-1.5 rounded-lg border text-[10px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-2",
+                                        "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-900 hover:bg-zinc-50 shadow-sm"
+                                      )}
+                                    >
+                                      {editingPresetId === preset.id ? (
+                                        <input
+                                          value={presetEditName}
+                                          onChange={(e) => setPresetEditName(e.target.value)}
+                                          onBlur={finalizePresetRename}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') finalizePresetRename();
+                                            if (e.key === 'Escape') setEditingPresetId(null);
+                                          }}
+                                          autoFocus
+                                          className="w-20 bg-transparent outline-none border-b border-zinc-900"
+                                          onClick={(e) => e.stopPropagation()}
+                                        />
+                                      ) : (
+                                        <span>{preset.name}</span>
+                                      )}
+                                      <div className="flex items-center opacity-40 group-hover/preset:opacity-100 transition-opacity">
+                                        <button
+                                          onClick={(e) => deleteTransformationPreset(e, preset.id)}
+                                          className="p-0.5 hover:text-rose-500 transition-colors"
+                                        >
+                                          <X className="w-2.5 h-2.5" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <Reorder.Group axis="y" values={transformationOrder} onReorder={setTransformationOrder} className="space-y-6">
                           {transformationOrder.map((id) => (
                             <Reorder.Item 
                               key={id} 
@@ -2712,7 +2879,8 @@ export default function App() {
                             </Reorder.Item>
                           ))}
                         </Reorder.Group>
-                      </motion.div>
+                      </div>
+                    </motion.div>
                     )}
                   </AnimatePresence>
                 </section>
