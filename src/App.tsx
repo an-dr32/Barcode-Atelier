@@ -30,6 +30,7 @@ import {
   Zap,
   Waves,
   ChevronDown,
+  ChevronUp,
   Plus,
   Trash2,
   Save,
@@ -40,6 +41,7 @@ import {
   Search,
   Type,
   X,
+  Minimize2,
   GripVertical,
   LayoutGrid,
   FolderPlus,
@@ -310,6 +312,7 @@ export default function App() {
   const [canvasSize, setCanvasSize] = useState(600);
   const [isResizing, setIsResizing] = useState(false);
   const [selectedBarcodes, setSelectedBarcodes] = useState<Set<string>>(new Set());
+  const [isPreviewCollapsed, setIsPreviewCollapsed] = useState(false);
   const resizeRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const isLongPressActive = useRef(false);
@@ -1993,71 +1996,107 @@ export default function App() {
             {/* Background Pattern */}
             <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 0)', backgroundSize: '24px 24px' }} />
             
-            <div className="w-full flex flex-col items-center pt-4 sm:pt-8 pb-4 px-4 sm:px-6 relative">
+            <div className="w-full flex flex-col items-center relative transition-all duration-500 ease-in-out">
               <AnimatePresence mode="wait">
-                <motion.div
-                  ref={resizeRef}
-                  key={`${inputText}-${barcodeType}-${silhouette}`}
-                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95, y: -20 }}
-                  transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
-                  className="z-10 relative group"
-                  style={{ width: canvasSize, maxWidth: '100%' }}
-                >
-                  <BarcodeCanvas 
-                    data={barcodeData}
-                    silhouette={silhouette}
-                    distortion={distortion}
-                    safeZone={safeZone}
-                    horizontalOffset={horizontalOffset}
-                    barWidthScale={barWidthScale}
-                    logoSmoothing={logoSmoothing}
-                    logoDetail={logoDetail}
-                    barcodeHeight={barcodeHeight}
-                    silhouetteGap={silhouetteGap}
-                    showNumbers={showNumbers}
-                    numbersGap={numbersGap}
-                    numbersTracking={numbersTracking}
-                    showName={showName}
-                    barcodeName={barcodeName}
-                    color={color}
-                    backgroundColor={bgColor}
-                    showSafeZone={showSafeZone}
-                    error={error}
-                  />
-
-                  {/* Resize Handles */}
-                  <div 
-                    onMouseDown={handleResizeMouseDown}
-                    className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-32 cursor-ew-resize flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20"
-                    title="Drag to resize proportionally"
+                {!isPreviewCollapsed && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
+                    className="w-full flex flex-col items-center pt-4 sm:pt-8 pb-4 px-4 sm:px-6 overflow-hidden"
                   >
-                    <div className="w-1.5 h-16 bg-zinc-900/10 rounded-full hover:bg-zinc-900/30 transition-colors" />
-                  </div>
-                  <div 
-                    onMouseDown={handleResizeMouseDown}
-                    className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-32 cursor-ew-resize flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20"
-                    title="Drag to resize proportionally"
-                  >
-                    <div className="w-1.5 h-16 bg-zinc-900/10 rounded-full hover:bg-zinc-900/30 transition-colors" />
-                  </div>
-
-                  {/* Size Indicator */}
-                  <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-400 bg-white/80 px-2 py-0.5 rounded-full border border-zinc-100">
-                      {Math.round(canvasSize)}px
-                    </span>
-                    <button 
-                      onClick={() => setCanvasSize(600)}
-                      className="p-0.5 bg-white/80 rounded-full border border-zinc-100 text-zinc-400 hover:text-zinc-900 transition-colors"
-                      title="Reset to default size"
+                    <motion.div
+                      ref={resizeRef}
+                      key={`${inputText}-${barcodeType}-${silhouette}`}
+                      initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95, y: -20 }}
+                      transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
+                      className="z-10 relative group"
+                      style={{ width: canvasSize, maxWidth: '100%' }}
                     >
-                      <RotateCcw className="w-2.5 h-2.5" />
-                    </button>
-                  </div>
-                </motion.div>
+                      <BarcodeCanvas 
+                        data={barcodeData}
+                        silhouette={silhouette}
+                        distortion={distortion}
+                        safeZone={safeZone}
+                        horizontalOffset={horizontalOffset}
+                        barWidthScale={barWidthScale}
+                        logoSmoothing={logoSmoothing}
+                        logoDetail={logoDetail}
+                        barcodeHeight={barcodeHeight}
+                        silhouetteGap={silhouetteGap}
+                        showNumbers={showNumbers}
+                        numbersGap={numbersGap}
+                        numbersTracking={numbersTracking}
+                        showName={showName}
+                        barcodeName={barcodeName}
+                        color={color}
+                        backgroundColor={bgColor}
+                        showSafeZone={showSafeZone}
+                        error={error}
+                      />
+
+                      {/* Resize Handles */}
+                      <div 
+                        onMouseDown={handleResizeMouseDown}
+                        className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-32 cursor-ew-resize flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                        title="Drag to resize proportionally"
+                      >
+                        <div className="w-1.5 h-16 bg-zinc-900/10 rounded-full hover:bg-zinc-900/30 transition-colors" />
+                      </div>
+                      <div 
+                        onMouseDown={handleResizeMouseDown}
+                        className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-32 cursor-ew-resize flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                        title="Drag to resize proportionally"
+                      >
+                        <div className="w-1.5 h-16 bg-zinc-900/10 rounded-full hover:bg-zinc-900/30 transition-colors" />
+                      </div>
+
+                      {/* Size Indicator */}
+                      <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
+                        <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-400 bg-white/80 px-2 py-0.5 rounded-full border border-zinc-100">
+                          {Math.round(canvasSize)}px
+                        </span>
+                        <button 
+                          onClick={() => setCanvasSize(600)}
+                          className="p-0.5 bg-white/80 rounded-full border border-zinc-100 text-zinc-400 hover:text-zinc-900 transition-colors"
+                          title="Reset to default size"
+                        >
+                          <RotateCcw className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
               </AnimatePresence>
+
+              {/* Mobile Collapse Toggle Bar */}
+              <div className="lg:hidden w-full flex flex-col items-center">
+                <button 
+                  onClick={() => setIsPreviewCollapsed(!isPreviewCollapsed)}
+                  className="w-full h-8 flex items-center justify-center bg-zinc-100/80 hover:bg-zinc-200/80 backdrop-blur-sm border-y border-zinc-200 transition-all active:bg-zinc-300/80 group"
+                  title={isPreviewCollapsed ? "Expand Preview" : "Collapse Preview"}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-1 bg-zinc-300 rounded-full overflow-hidden group-hover:bg-zinc-400">
+                      <motion.div 
+                        animate={{ x: isPreviewCollapsed ? 0 : -10 }} 
+                        className="w-full h-full bg-zinc-500 opacity-20"
+                      />
+                    </div>
+                    <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-400 group-hover:text-zinc-600 transition-colors">
+                      {isPreviewCollapsed ? 'Show Preview' : 'Hide Preview'}
+                    </span>
+                    {isPreviewCollapsed ? (
+                      <ChevronDown className="w-3 h-3 text-zinc-400 group-hover:text-zinc-600" />
+                    ) : (
+                      <ChevronUp className="w-3 h-3 text-zinc-400 group-hover:text-zinc-600" />
+                    )}
+                  </div>
+                </button>
+              </div>
             </div>
 
             {/* Mobile Tab Switcher */}
